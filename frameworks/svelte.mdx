@@ -1,0 +1,314 @@
+---
+title: Svelte
+description: Use Logo Soup in Svelte 5 applications with runes
+---
+
+## Installation
+
+```bash
+npm install @sanity-labs/logo-soup
+```
+
+Logo Soup has optional peer dependencies. For Svelte:
+
+```bash
+npm install svelte@^5
+```
+
+<Note>
+  Requires Svelte 5.7+ for `createSubscriber` support from `svelte/reactivity`
+</Note>
+
+## Quick Start
+
+The `createLogoSoup` function returns a reactive object compatible with Svelte 5 runes:
+
+```svelte
+<script>
+  import { createLogoSoup } from "@sanity-labs/logo-soup/svelte";
+  import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+  let { logos = [] } = $props();
+
+  const soup = createLogoSoup();
+
+  $effect(() => {
+    soup.process({ logos });
+  });
+
+  $effect(() => {
+    return () => soup.destroy();
+  });
+</script>
+
+{#if soup.isReady}
+  {#each soup.normalizedLogos as logo (logo.src)}
+    <img
+      src={logo.src}
+      alt={logo.alt}
+      width={logo.normalizedWidth}
+      height={logo.normalizedHeight}
+      style:transform={getVisualCenterTransform(logo, "visual-center-y")}
+    />
+  {/each}
+{/if}
+```
+
+## API
+
+### createLogoSoup
+
+**Returns:** A reactive object with the following properties and methods:
+
+```ts
+type LogoSoupSvelte = {
+  process(options: ProcessOptions): void;
+  
+  // Reactive getters (auto-track when accessed in $effect or template)
+  readonly state: LogoSoupState;
+  readonly isLoading: boolean;
+  readonly isReady: boolean;
+  readonly normalizedLogos: NormalizedLogo[];
+  readonly error: Error | null;
+  
+  destroy(): void;
+};
+```
+
+### How Reactivity Works
+
+The adapter uses `createSubscriber` from `svelte/reactivity`. When you access properties like `soup.normalizedLogos` inside an `$effect` or template, Svelte automatically subscribes to changes. When the engine emits an update, all subscribers re-run.
+
+```svelte
+<script>
+  const soup = createLogoSoup();
+  
+  // Reading soup.normalizedLogos registers this $effect as a subscriber
+  $effect(() => {
+    console.log('Logos updated:', soup.normalizedLogos.length);
+  });
+</script>
+
+<!-- Reading in template also subscribes -->
+{#if soup.isReady}
+  <p>Loaded {soup.normalizedLogos.length} logos</p>
+{/if}
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="Basic Strip">
+    ```svelte
+    <script>
+      import { createLogoSoup } from "@sanity-labs/logo-soup/svelte";
+      import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+      const logos = [
+        { src: "/logos/acme.svg", alt: "Acme Corp" },
+        { src: "/logos/globex.svg", alt: "Globex" },
+        { src: "/logos/initech.svg", alt: "Initech" },
+      ];
+
+      const soup = createLogoSoup();
+
+      $effect(() => {
+        soup.process({ logos, baseSize: 48 });
+      });
+
+      $effect(() => {
+        return () => soup.destroy();
+      });
+    </script>
+
+    {#if soup.isReady}
+      <div class="flex gap-8 justify-center">
+        {#each soup.normalizedLogos as logo (logo.src)}
+          <img
+            src={logo.src}
+            alt={logo.alt}
+            width={logo.normalizedWidth}
+            height={logo.normalizedHeight}
+            style:transform={getVisualCenterTransform(logo, "visual-center-y")}
+          />
+        {/each}
+      </div>
+    {/if}
+    ```
+  </Tab>
+  
+  <Tab title="Custom Grid">
+    ```svelte
+    <script>
+      import { createLogoSoup } from "@sanity-labs/logo-soup/svelte";
+      import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+      let { logos = [] } = $props();
+
+      const soup = createLogoSoup();
+
+      $effect(() => {
+        soup.process({
+          logos,
+          baseSize: 64,
+          cropToContent: true,
+        });
+      });
+
+      $effect(() => {
+        return () => soup.destroy();
+      });
+    </script>
+
+    <div class="grid">
+      {#if soup.isLoading}
+        <p>Loading logos...</p>
+      {:else if soup.isReady}
+        {#each soup.normalizedLogos as logo (logo.src)}
+          <div class="grid-item">
+            <img
+              src={logo.croppedSrc || logo.src}
+              alt={logo.alt}
+              width={logo.normalizedWidth}
+              height={logo.normalizedHeight}
+              style:transform={getVisualCenterTransform(logo, "visual-center")}
+            />
+          </div>
+        {/each}
+      {:else if soup.error}
+        <p>Error: {soup.error.message}</p>
+      {/if}
+    </div>
+
+    <style>
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 2rem;
+      }
+      
+      .grid-item {
+        display: flex;
+        align-items: center;
+        justify-center: center;
+      }
+    </style>
+    ```
+  </Tab>
+  
+  <Tab title="Reactive Controls">
+    ```svelte
+    <script>
+      import { createLogoSoup } from "@sanity-labs/logo-soup/svelte";
+      import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+      let logos = $state(["/logo1.svg", "/logo2.svg"]);
+      let baseSize = $state(48);
+      let cropEnabled = $state(false);
+
+      const soup = createLogoSoup();
+
+      // Automatically re-processes when logos, baseSize, or cropEnabled change
+      $effect(() => {
+        soup.process({
+          logos,
+          baseSize,
+          cropToContent: cropEnabled,
+        });
+      });
+
+      $effect(() => {
+        return () => soup.destroy();
+      });
+
+      function addLogo() {
+        logos = [...logos, `/logo${logos.length + 1}.svg`];
+      }
+    </script>
+
+    <div class="controls">
+      <label>
+        Base Size: {baseSize}px
+        <input type="range" bind:value={baseSize} min="24" max="128" />
+      </label>
+      
+      <label>
+        <input type="checkbox" bind:checked={cropEnabled} />
+        Crop whitespace
+      </label>
+      
+      <button onclick={addLogo}>Add Logo</button>
+    </div>
+
+    {#if soup.isReady}
+      <div class="logos">
+        {#each soup.normalizedLogos as logo (logo.src)}
+          <img
+            src={logo.croppedSrc || logo.src}
+            alt={logo.alt}
+            width={logo.normalizedWidth}
+            height={logo.normalizedHeight}
+          />
+        {/each}
+      </div>
+    {/if}
+    ```
+  </Tab>
+</Tabs>
+
+## TypeScript
+
+All Svelte exports are fully typed:
+
+```ts
+import type { ProcessOptions, LogoSoupState } from "@sanity-labs/logo-soup/svelte";
+
+import type {
+  LogoSource,
+  NormalizedLogo,
+  AlignmentMode,
+  BackgroundColor,
+} from "@sanity-labs/logo-soup";
+```
+
+## Implementation Details
+
+The Svelte adapter is ~50 lines and wraps the core engine with `createSubscriber`:
+
+```ts
+import { createSubscriber } from "svelte/reactivity";
+import { createLogoSoup as createEngine } from "../core/create-logo-soup";
+
+export function createLogoSoup() {
+  const engine = createEngine();
+  
+  // createSubscriber registers callers as subscribers
+  const subscribe = createSubscriber((update) => {
+    return engine.subscribe(update);
+  });
+  
+  return {
+    process(options) {
+      engine.process(options);
+    },
+    
+    // Reactive getters call subscribe() to register the caller
+    get normalizedLogos() {
+      subscribe();
+      return engine.getSnapshot().normalizedLogos;
+    },
+    
+    // ... other getters
+    
+    destroy() {
+      engine.destroy();
+    },
+  };
+}
+```
+
+## See Also
+
+- [API Reference](/options) - Complete options reference
+- [Alignment](/how-it-works) - How visual centering works
+- [Custom Adapters](/frameworks/custom) - Build your own framework adapter

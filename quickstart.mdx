@@ -1,80 +1,213 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get up and running with Logo Soup in 5 minutes
 ---
 
-## Get started in three steps
+## Installation
 
-Get your documentation site running locally and make your first customization.
+Install Logo Soup from npm using your preferred package manager:
 
-### Step 1: Set up your local environment
+<CodeGroup>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash npm
+npm install @sanity-labs/logo-soup
+```
 
-### Step 2: Deploy your changes
+```bash yarn
+yarn add @sanity-labs/logo-soup
+```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+```bash pnpm
+pnpm add @sanity-labs/logo-soup
+```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+```bash bun
+bun add @sanity-labs/logo-soup
+```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+</CodeGroup>
 
-### Step 3: Go live
+## Basic Usage (React)
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+The fastest way to get started is with the React component. Import `LogoSoup` and pass it an array of logos:
 
-## Next steps
+<Steps>
+  <Step title="Import the component">
+    ```tsx
+    import { LogoSoup } from "@sanity-labs/logo-soup/react";
+    ```
+  </Step>
 
-Now that you have your docs running, explore these key features:
+  <Step title="Create your logo array">
+    ```tsx
+    const logos = [
+      { src: "/logos/acme.svg", alt: "Acme Corp" },
+      { src: "/logos/globex.svg", alt: "Globex" },
+      { src: "/logos/initech.svg", alt: "Initech" },
+    ];
+    ```
+  </Step>
 
-<CardGroup cols={2}>
+  <Step title="Render the component">
+    ```tsx
+    function LogoStrip() {
+      return <LogoSoup logos={logos} />;
+    }
+    ```
+  </Step>
+</Steps>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+### Complete Example
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+```tsx
+import { LogoSoup } from "@sanity-labs/logo-soup/react";
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+function LogoStrip() {
+  return (
+    <LogoSoup
+      logos={[
+        { src: "/logos/acme.svg", alt: "Acme Corp" },
+        { src: "/logos/globex.svg", alt: "Globex" },
+        { src: "/logos/initech.svg", alt: "Initech" },
+      ]}
+    />
+  );
+}
+```
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+That's it! The `<LogoSoup>` component handles everything:
 
-</CardGroup>
+- Loading and analyzing each logo
+- Detecting content boundaries
+- Normalizing sizes based on visual weight
+- Aligning logos for visual harmony
+- Rendering with proper spacing
+
+## Customization
+
+You can customize the appearance and behavior with props:
+
+```tsx
+<LogoSoup
+  logos={logos}
+  baseSize={64}                    // Target size in pixels (default: 48)
+  gap={32}                         // Space between logos (default: 28)
+  alignBy="visual-center-y"        // Alignment mode (default)
+  densityAware={true}              // Scale based on visual weight (default: true)
+  cropToContent={false}            // Crop whitespace (default: false)
+/>
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+See the [Configuration](/options) page for all available options and their effects.
 </Note>
+
+## Using the Hook
+
+For custom layouts, use the `useLogoSoup` hook directly:
+
+```tsx
+import { useLogoSoup } from "@sanity-labs/logo-soup/react";
+import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+function CustomGrid() {
+  const { isLoading, normalizedLogos } = useLogoSoup({
+    logos: ["/logo1.svg", "/logo2.svg"],
+    baseSize: 48,
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+
+  return (
+    <div className="flex gap-4">
+      {normalizedLogos.map((logo) => (
+        <img
+          key={logo.src}
+          src={logo.src}
+          alt={logo.alt}
+          width={logo.normalizedWidth}
+          height={logo.normalizedHeight}
+          style={{
+            transform: getVisualCenterTransform(logo, "visual-center-y"),
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+## Integration with Next.js
+
+Use the `renderImage` prop to integrate with Next.js Image component:
+
+```tsx
+import Image from "next/image";
+import { LogoSoup } from "@sanity-labs/logo-soup/react";
+
+<LogoSoup
+  logos={logos}
+  renderImage={(props) => (
+    <Image
+      src={props.src}
+      alt={props.alt}
+      width={props.width}
+      height={props.height}
+    />
+  )}
+/>
+```
+
+## What You Get
+
+After normalization, each logo receives:
+
+- `normalizedWidth` — Computed width in pixels
+- `normalizedHeight` — Computed height in pixels
+- `visualCenter` — Coordinates for alignment (x and y offsets)
+- `bounds` — Original bounding box dimensions
+- `density` — Measured visual weight
+
+These values ensure logos appear balanced regardless of their original dimensions or visual characteristics.
+
+## Other Frameworks
+
+Logo Soup supports all major frameworks with the same simple API:
+
+<CardGroup cols={2}>
+  <Card title="Vue" icon="vuejs" href="/frameworks/vue">
+    Use the `useLogoSoup` composable with reactive dependencies
+  </Card>
+  <Card title="Svelte" icon="code" href="/frameworks/svelte">
+    Use `createLogoSoup` with Svelte 5 runes
+  </Card>
+  <Card title="Solid" icon="code" href="/frameworks/solid">
+    Use the `useLogoSoup` primitive with reactive tracking
+  </Card>
+  <Card title="Angular" icon="angular" href="/frameworks/angular">
+    Use `LogoSoupService` with Angular signals
+  </Card>
+  <Card title="jQuery" icon="code" href="/frameworks/jquery">
+    Use the `$.fn.logoSoup` plugin
+  </Card>
+  <Card title="Vanilla JS" icon="js" href="/frameworks/vanilla">
+    Use the core `createLogoSoup()` engine directly
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="sliders" href="/options">
+    Learn about all available options
+  </Card>
+  <Card title="React Deep Dive" icon="react" href="/frameworks/react">
+    Explore advanced React patterns
+  </Card>
+  <Card title="How It Works" icon="lightbulb" href="/how-it-works">
+    Understand the normalization algorithm
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference/create-logo-soup">
+    Complete API documentation
+  </Card>
+</CardGroup>

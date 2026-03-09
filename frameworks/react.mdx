@@ -1,0 +1,269 @@
+---
+title: React
+description: Use Logo Soup in React applications with hooks and components
+---
+
+## Installation
+
+```bash
+npm install @sanity-labs/logo-soup
+```
+
+Logo Soup has optional peer dependencies. For React:
+
+```bash
+npm install react react-dom
+```
+
+## Quick Start
+
+The `<LogoSoup>` component provides a complete solution with built-in layout and alignment:
+
+```tsx
+import { LogoSoup } from "@sanity-labs/logo-soup/react";
+
+function LogoStrip() {
+  return (
+    <LogoSoup
+      logos={[
+        { src: "/logos/acme.svg", alt: "Acme Corp" },
+        { src: "/logos/globex.svg", alt: "Globex" },
+        { src: "/logos/initech.svg", alt: "Initech" },
+      ]}
+    />
+  );
+}
+```
+
+## Component API
+
+### LogoSoup Component
+
+The `<LogoSoup>` component accepts all [processing options](/options) plus layout-specific props:
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `logos` | `(string \| LogoSource)[]` | required | Array of logo URLs or objects with `src` and `alt` |
+| `baseSize` | `number` | `48` | Target size in pixels |
+| `scaleFactor` | `number` | `0.5` | Shape handling: `0` = uniform widths, `1` = uniform heights |
+| `densityAware` | `boolean` | `true` | Scale dense logos down and light logos up |
+| `densityFactor` | `number` | `0.5` | How strong the density effect is (`0`-`1`) |
+| `cropToContent` | `boolean` | `false` | Crop whitespace/padding from logos |
+| `contrastThreshold` | `number` | `10` | Minimum contrast for content detection |
+| `backgroundColor` | `string \| [r,g,b]` | auto-detected | Background color for contrast detection |
+| `gap` | `number \| string` | `28` | Space between logos |
+| `alignBy` | `AlignmentMode` | `"visual-center-y"` | Alignment mode (see below) |
+| `renderImage` | `(props) => ReactNode` | `<img>` | Custom image renderer |
+| `className` | `string` | - | Container class name |
+| `style` | `CSSProperties` | - | Container inline styles |
+| `onNormalized` | `(logos) => void` | - | Callback when normalization completes |
+
+### Alignment Modes
+
+| Mode | Description |
+|------|-------------|
+| `"bounds"` | Align by geometric center (bounding box) |
+| `"visual-center"` | Align by visual weight center (both axes) |
+| `"visual-center-x"` | Visual center horizontally only |
+| `"visual-center-y"` | Visual center vertically only (default) |
+
+## Custom Image Component
+
+Use `renderImage` to integrate with Next.js Image or add custom attributes:
+
+```tsx
+import Image from "next/image";
+import { LogoSoup } from "@sanity-labs/logo-soup/react";
+
+function LogoStripWithNextImage() {
+  return (
+    <LogoSoup
+      logos={logos}
+      renderImage={(props) => (
+        <Image
+          src={props.src}
+          alt={props.alt}
+          width={props.width}
+          height={props.height}
+        />
+      )}
+    />
+  );
+}
+```
+
+## useLogoSoup Hook
+
+For custom layouts, use the `useLogoSoup` hook directly:
+
+```tsx
+import { useLogoSoup } from "@sanity-labs/logo-soup/react";
+import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+function CustomGrid() {
+  const { isLoading, normalizedLogos } = useLogoSoup({
+    logos: ["/logo1.svg", "/logo2.svg"],
+    baseSize: 48,
+  });
+
+  if (isLoading) return null;
+
+  return (
+    <div className="flex gap-4">
+      {normalizedLogos.map((logo) => (
+        <img
+          key={logo.src}
+          src={logo.src}
+          alt={logo.alt}
+          width={logo.normalizedWidth}
+          height={logo.normalizedHeight}
+          style={{
+            transform: getVisualCenterTransform(logo, "visual-center-y"),
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+### Hook API
+
+**Options:**
+
+```tsx
+type UseLogoSoupOptions = {
+  logos: (string | LogoSource)[];
+  baseSize?: number;
+  scaleFactor?: number;
+  contrastThreshold?: number;
+  densityAware?: boolean;
+  densityFactor?: number;
+  cropToContent?: boolean;
+  backgroundColor?: BackgroundColor;
+};
+```
+
+**Return Value:**
+
+```tsx
+type UseLogoSoupResult = {
+  isLoading: boolean;
+  isReady: boolean;
+  normalizedLogos: NormalizedLogo[];
+  error: Error | null;
+};
+```
+
+## Server-Side Rendering
+
+The hook uses `useSyncExternalStore` with proper SSR support. During server rendering, it returns an idle state with empty logos to prevent hydration mismatches.
+
+<Note>
+  Logo processing happens client-side using canvas. The component will initially render without logos, then populate once measurements complete.
+</Note>
+
+## Examples
+
+<Tabs>
+  <Tab title="Basic Strip">
+    ```tsx
+    import { LogoSoup } from "@sanity-labs/logo-soup/react";
+
+    export function Partners() {
+      return (
+        <LogoSoup
+          logos={[
+            { src: "/logos/acme.svg", alt: "Acme Corp" },
+            { src: "/logos/globex.svg", alt: "Globex" },
+            { src: "/logos/initech.svg", alt: "Initech" },
+          ]}
+          baseSize={48}
+          gap={32}
+        />
+      );
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Custom Grid">
+    ```tsx
+    import { useLogoSoup } from "@sanity-labs/logo-soup/react";
+    import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+    export function LogoGrid() {
+      const { isReady, normalizedLogos } = useLogoSoup({
+        logos: ["/logo1.svg", "/logo2.svg", "/logo3.svg", "/logo4.svg"],
+        baseSize: 64,
+      });
+
+      if (!isReady) return <div>Loading...</div>;
+
+      return (
+        <div className="grid grid-cols-2 gap-8">
+          {normalizedLogos.map((logo) => (
+            <div key={logo.src} className="flex items-center justify-center">
+              <img
+                src={logo.src}
+                alt={logo.alt}
+                width={logo.normalizedWidth}
+                height={logo.normalizedHeight}
+                style={{
+                  transform: getVisualCenterTransform(logo, "visual-center"),
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      );
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Next.js Image">
+    ```tsx
+    import Image from "next/image";
+    import { LogoSoup } from "@sanity-labs/logo-soup/react";
+
+    export function OptimizedLogos() {
+      return (
+        <LogoSoup
+          logos={[
+            { src: "/logos/acme.svg", alt: "Acme Corp" },
+            { src: "/logos/globex.svg", alt: "Globex" },
+          ]}
+          renderImage={(props) => (
+            <Image
+              src={props.src}
+              alt={props.alt}
+              width={props.width}
+              height={props.height}
+              style={props.style}
+            />
+          )}
+        />
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## TypeScript
+
+All React exports are fully typed:
+
+```tsx
+import type {
+  LogoSoupProps,
+  UseLogoSoupOptions,
+  UseLogoSoupResult,
+  ImageRenderProps,
+  RenderImageFn,
+} from "@sanity-labs/logo-soup/react";
+```
+
+## See Also
+
+- [API Reference](/options) - Complete options reference
+- [Alignment](/how-it-works) - How visual centering works
+- [Vanilla JS](/frameworks/vanilla) - Using the core engine directly

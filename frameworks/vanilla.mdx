@@ -1,0 +1,376 @@
+---
+title: Vanilla JavaScript
+description: Use the core Logo Soup engine without any framework
+---
+
+## Installation
+
+```bash
+npm install @sanity-labs/logo-soup
+```
+
+No framework dependencies required.
+
+## Quick Start
+
+The core engine works with any JavaScript environment:
+
+```ts
+import {
+  createLogoSoup,
+  getVisualCenterTransform,
+} from "@sanity-labs/logo-soup";
+
+const engine = createLogoSoup();
+
+engine.subscribe(() => {
+  const { status, normalizedLogos } = engine.getSnapshot();
+  if (status !== "ready") return;
+
+  const container = document.getElementById("logos")!;
+  container.innerHTML = normalizedLogos
+    .map((logo) => {
+      const transform = getVisualCenterTransform(logo, "visual-center-y");
+      return `<img
+        src="${logo.src}"
+        alt="${logo.alt}"
+        width="${logo.normalizedWidth}"
+        height="${logo.normalizedHeight}"
+        style="transform: ${transform ?? "none"}"
+      />`;
+    })
+    .join("");
+});
+
+engine.process({
+  logos: ["/logos/acme.svg", "/logos/globex.svg", "/logos/initech.svg"],
+});
+```
+
+## Core Engine API
+
+### createLogoSoup
+
+**Returns:** `LogoSoupEngine`
+
+```ts
+type LogoSoupEngine = {
+  process(options: ProcessOptions): void;
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): LogoSoupState;
+  destroy(): void;
+};
+```
+
+### process(options)
+
+Triggers logo loading, measurement, and normalization.
+
+```ts
+engine.process({
+  logos: ["/logo1.svg", { src: "/logo2.svg", alt: "Logo 2" }],
+  baseSize: 48,
+  scaleFactor: 0.5,
+  densityAware: true,
+  densityFactor: 0.5,
+  cropToContent: false,
+  contrastThreshold: 10,
+  backgroundColor: "#ffffff",
+});
+```
+
+See [API Reference](/options) for complete options.
+
+### subscribe(listener)
+
+Subscribes to state changes. Returns an unsubscribe function.
+
+```ts
+const unsubscribe = engine.subscribe(() => {
+  console.log("State changed:", engine.getSnapshot());
+});
+
+// Later:
+unsubscribe();
+```
+
+### getSnapshot()
+
+Returns the current immutable state:
+
+```ts
+type LogoSoupState = {
+  status: "idle" | "loading" | "ready" | "error";
+  normalizedLogos: NormalizedLogo[];
+  error: Error | null;
+};
+```
+
+```ts
+const { status, normalizedLogos, error } = engine.getSnapshot();
+
+if (status === "ready") {
+  console.log("Loaded", normalizedLogos.length, "logos");
+}
+```
+
+### destroy()
+
+Cleans up resources, cancels in-flight work, and revokes blob URLs:
+
+```ts
+engine.destroy();
+```
+
+## State Management
+
+The engine uses an immutable state model. The snapshot reference only changes when actual values change:
+
+```ts
+let prevSnapshot = engine.getSnapshot();
+
+engine.subscribe(() => {
+  const nextSnapshot = engine.getSnapshot();
+  
+  if (prevSnapshot !== nextSnapshot) {
+    console.log("State actually changed");
+    prevSnapshot = nextSnapshot;
+  }
+});
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="Basic Rendering">
+    ```ts
+    import { createLogoSoup, getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+    const engine = createLogoSoup();
+    const container = document.getElementById("logos");
+
+    engine.subscribe(() => {
+      const { status, normalizedLogos } = engine.getSnapshot();
+      
+      if (status === "loading") {
+        container.innerHTML = "<p>Loading...</p>";
+      } else if (status === "ready") {
+        container.innerHTML = normalizedLogos
+          .map((logo) => {
+            const transform = getVisualCenterTransform(logo, "visual-center-y");
+            return `
+              <img
+                src="${logo.src}"
+                alt="${logo.alt}"
+                width="${logo.normalizedWidth}"
+                height="${logo.normalizedHeight}"
+                style="transform: ${transform ?? "none"}; margin: 0 1rem;"
+              />
+            `;
+          })
+          .join("");
+      }
+    });
+
+    engine.process({
+      logos: [
+        { src: "/logos/acme.svg", alt: "Acme Corp" },
+        { src: "/logos/globex.svg", alt: "Globex" },
+        { src: "/logos/initech.svg", alt: "Initech" },
+      ],
+      baseSize: 48,
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Custom Grid">
+    ```ts
+    import { createLogoSoup, getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+    const engine = createLogoSoup();
+    const container = document.getElementById("logo-grid");
+
+    engine.subscribe(() => {
+      const { status, normalizedLogos } = engine.getSnapshot();
+      
+      if (status !== "ready") return;
+
+      container.innerHTML = "";
+      container.style.display = "grid";
+      container.style.gridTemplateColumns = "repeat(auto-fit, minmax(200px, 1fr))";
+      container.style.gap = "2rem";
+
+      normalizedLogos.forEach((logo) => {
+        const cell = document.createElement("div");
+        cell.style.display = "flex";
+        cell.style.alignItems = "center";
+        cell.style.justifyContent = "center";
+
+        const img = document.createElement("img");
+        img.src = logo.croppedSrc || logo.src;
+        img.alt = logo.alt;
+        img.width = logo.normalizedWidth;
+        img.height = logo.normalizedHeight;
+        
+        const transform = getVisualCenterTransform(logo, "visual-center");
+        if (transform) img.style.transform = transform;
+
+        cell.appendChild(img);
+        container.appendChild(cell);
+      });
+    });
+
+    engine.process({
+      logos: ["/logo1.svg", "/logo2.svg", "/logo3.svg", "/logo4.svg"],
+      baseSize: 64,
+      cropToContent: true,
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Dynamic Updates">
+    ```ts
+    import { createLogoSoup } from "@sanity-labs/logo-soup";
+
+    const engine = createLogoSoup();
+    const container = document.getElementById("logos");
+    let currentLogos = ["/logo1.svg", "/logo2.svg"];
+
+    function render() {
+      const { status, normalizedLogos, error } = engine.getSnapshot();
+      
+      if (status === "loading") {
+        container.innerHTML = "<p>Processing...</p>";
+      } else if (status === "ready") {
+        container.innerHTML = normalizedLogos
+          .map((logo) => `
+            <img
+              src="${logo.src}"
+              alt="${logo.alt}"
+              width="${logo.normalizedWidth}"
+              height="${logo.normalizedHeight}"
+            />
+          `)
+          .join("");
+      } else if (status === "error") {
+        container.innerHTML = `<p>Error: ${error?.message}</p>`;
+      }
+    }
+
+    engine.subscribe(render);
+
+    // Initial load
+    engine.process({ logos: currentLogos });
+
+    // Add logo button
+    document.getElementById("add-logo").addEventListener("click", () => {
+      currentLogos.push(`/logo${currentLogos.length + 1}.svg`);
+      engine.process({ logos: currentLogos });
+    });
+
+    // Cleanup
+    window.addEventListener("beforeunload", () => {
+      engine.destroy();
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Web Component">
+    ```ts
+    import { createLogoSoup, getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+    class LogoSoupElement extends HTMLElement {
+      private engine = createLogoSoup();
+      private unsubscribe?: () => void;
+
+      connectedCallback() {
+        this.unsubscribe = this.engine.subscribe(() => this.render());
+        
+        const logos = this.getAttribute("logos")?.split(",") || [];
+        const baseSize = Number(this.getAttribute("base-size")) || 48;
+        
+        this.engine.process({ logos, baseSize });
+      }
+
+      disconnectedCallback() {
+        this.unsubscribe?.();
+        this.engine.destroy();
+      }
+
+      render() {
+        const { status, normalizedLogos } = this.engine.getSnapshot();
+        
+        if (status !== "ready") return;
+
+        this.innerHTML = normalizedLogos
+          .map((logo) => {
+            const transform = getVisualCenterTransform(logo, "visual-center-y");
+            return `
+              <img
+                src="${logo.src}"
+                alt="${logo.alt}"
+                width="${logo.normalizedWidth}"
+                height="${logo.normalizedHeight}"
+                style="transform: ${transform ?? "none"}"
+              />
+            `;
+          })
+          .join("");
+      }
+    }
+
+    customElements.define("logo-soup", LogoSoupElement);
+    ```
+
+    ```html
+    <logo-soup
+      logos="/logo1.svg,/logo2.svg,/logo3.svg"
+      base-size="48"
+    ></logo-soup>
+    ```
+  </Tab>
+</Tabs>
+
+## TypeScript
+
+All core exports are fully typed:
+
+```ts
+import type {
+  LogoSoupEngine,
+  LogoSoupState,
+  ProcessOptions,
+  LogoSource,
+  NormalizedLogo,
+  AlignmentMode,
+  BackgroundColor,
+  BoundingBox,
+  VisualCenter,
+  MeasurementResult,
+} from "@sanity-labs/logo-soup";
+```
+
+## Utilities
+
+### getVisualCenterTransform
+
+Computes the CSS `transform` for visual alignment:
+
+```ts
+import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+const transform = getVisualCenterTransform(logo, "visual-center-y");
+// "translateY(-2.5px)" or null
+```
+
+Alignment modes:
+- `"bounds"` — Geometric center (no transform)
+- `"visual-center"` — Visual center on both axes
+- `"visual-center-x"` — Visual center horizontally
+- `"visual-center-y"` — Visual center vertically (default)
+
+## See Also
+
+- [API Reference](/options) - Complete options reference
+- [Custom Adapters](/frameworks/custom) - Build your own framework adapter
+- [Alignment](/how-it-works) - How visual centering works

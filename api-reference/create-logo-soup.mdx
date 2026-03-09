@@ -1,0 +1,266 @@
+---
+title: createLogoSoup
+description: Core engine for normalizing and processing logos
+---
+
+## Overview
+
+The `createLogoSoup()` function creates the core processing engine that handles image loading, measurement, normalization, and caching. It returns a `LogoSoupEngine` instance with an imperative subscribe/getSnapshot interface.
+
+This is the foundation of all framework adapters. For most use cases, you'll use a framework-specific wrapper (React hook, Vue composable, etc.), but the engine can be used directly for custom integrations.
+
+## Signature
+
+```typescript
+function createLogoSoup(): LogoSoupEngine
+```
+
+## Return Type
+
+Returns a `LogoSoupEngine` object with the following methods:
+
+<ResponseField name="process" type="(options: ProcessOptions) => void" required>
+  Triggers a processing run with the given options. Call this whenever your input logos or options change.
+  
+  Any in-flight processing from a previous call is automatically cancelled.
+</ResponseField>
+
+<ResponseField name="subscribe" type="(listener: () => void) => () => void" required>
+  Subscribes to state changes. The listener is called whenever the engine's state updates.
+  
+  Returns an unsubscribe function to remove the listener.
+</ResponseField>
+
+<ResponseField name="getSnapshot" type="() => LogoSoupState" required>
+  Returns the current immutable state snapshot.
+  
+  **Important:** Returns the same reference if nothing has changed, enabling efficient change detection.
+</ResponseField>
+
+<ResponseField name="destroy" type="() => void" required>
+  Cleans up resources:
+  - Revokes all blob URLs created for cropped images
+  - Cancels any in-flight processing
+  - Clears the image cache
+  - Removes all listeners
+  
+  Always call this when you're done with the engine to prevent memory leaks.
+</ResponseField>
+
+## State Shape
+
+The `LogoSoupState` object returned by `getSnapshot()` has the following structure:
+
+<ResponseField name="status" type="'idle' | 'loading' | 'ready' | 'error'" required>
+  Current processing status:
+  - `idle` — Initial state before first `process()` call
+  - `loading` — Loading or measuring images
+  - `ready` — Processing complete, normalized logos available
+  - `error` — All logos failed to load
+</ResponseField>
+
+<ResponseField name="normalizedLogos" type="NormalizedLogo[]" required>
+  Array of successfully processed and normalized logos. Empty if not in `ready` state or if all logos failed.
+  
+  See [types](/api-reference/types#normalizedlogo) for the complete structure.
+</ResponseField>
+
+<ResponseField name="error" type="Error | null">
+  Error object if status is `error`, otherwise `null`.
+</ResponseField>
+
+## Usage Example
+
+### Basic Usage
+
+```typescript
+import { createLogoSoup } from '@sanity-labs/logo-soup';
+
+const engine = createLogoSoup();
+
+// Subscribe to state changes
+const unsubscribe = engine.subscribe(() => {
+  const { status, normalizedLogos, error } = engine.getSnapshot();
+  
+  if (status === 'loading') {
+    console.log('Loading logos...');
+  }
+  
+  if (status === 'ready') {
+    console.log('Normalized logos:', normalizedLogos);
+  }
+  
+  if (status === 'error') {
+    console.error('Failed to load logos:', error);
+  }
+});
+
+// Trigger processing
+engine.process({
+  logos: [
+    { src: '/logos/acme.svg', alt: 'Acme Corp' },
+    { src: '/logos/globex.svg', alt: 'Globex' },
+    { src: '/logos/initech.svg', alt: 'Initech' },
+  ],
+  baseSize: 48,
+  scaleFactor: 0.5,
+  densityAware: true,
+});
+
+// Clean up when done
+// unsubscribe();
+// engine.destroy();
+```
+
+### Rendering to DOM
+
+```typescript
+import {
+  createLogoSoup,
+  getVisualCenterTransform,
+} from '@sanity-labs/logo-soup';
+
+const engine = createLogoSoup();
+const container = document.getElementById('logos')!;
+
+engine.subscribe(() => {
+  const { status, normalizedLogos } = engine.getSnapshot();
+  
+  if (status !== 'ready') return;
+  
+  container.innerHTML = normalizedLogos
+    .map((logo) => {
+      const transform = getVisualCenterTransform(logo, 'visual-center-y');
+      return `<img
+        src="${logo.src}"
+        alt="${logo.alt}"
+        width="${logo.normalizedWidth}"
+        height="${logo.normalizedHeight}"
+        style="transform: ${transform ?? 'none'}"
+      />`;
+    })
+    .join('');
+});
+
+engine.process({
+  logos: ['/logos/acme.svg', '/logos/globex.svg'],
+});
+```
+
+### Integration with Reactivity Systems
+
+The `subscribe`/`getSnapshot` pattern is designed to integrate with any framework's reactivity system:
+
+<CodeGroup>
+
+```typescript React (useSyncExternalStore)
+import { useSyncExternalStore } from 'react';
+import { createLogoSoup } from '@sanity-labs/logo-soup';
+
+function useLogoSoup(options) {
+  const engine = useRef(createLogoSoup()).current;
+  
+  useEffect(() => {
+    engine.process(options);
+  }, [engine, options]);
+  
+  const state = useSyncExternalStore(
+    engine.subscribe,
+    engine.getSnapshot,
+    engine.getSnapshot,
+  );
+  
+  useEffect(() => () => engine.destroy(), [engine]);
+  
+  return state;
+}
+```
+
+```typescript Vue (shallowRef)
+import { shallowRef, watch, onUnmounted } from 'vue';
+import { createLogoSoup } from '@sanity-labs/logo-soup';
+
+function useLogoSoup(options) {
+  const engine = createLogoSoup();
+  const state = shallowRef(engine.getSnapshot());
+  
+  const unsubscribe = engine.subscribe(() => {
+    state.value = engine.getSnapshot();
+  });
+  
+  watch(() => options.value, (opts) => {
+    engine.process(opts);
+  }, { immediate: true });
+  
+  onUnmounted(() => {
+    unsubscribe();
+    engine.destroy();
+  });
+  
+  return state;
+}
+```
+
+```typescript Svelte (createSubscriber)
+import { createLogoSoup } from '@sanity-labs/logo-soup/svelte';
+
+let logos = $state(['/logo1.svg', '/logo2.svg']);
+const soup = createLogoSoup();
+
+$effect(() => {
+  soup.process({ logos });
+});
+
+$effect(() => {
+  return () => soup.destroy();
+});
+
+// Access reactive state
+console.log(soup.status, soup.normalizedLogos);
+```
+
+```typescript Solid (from)
+import { from } from 'solid-js';
+import { createLogoSoup } from '@sanity-labs/logo-soup';
+
+function useLogoSoup(getOptions) {
+  const engine = createLogoSoup();
+  const state = from({
+    subscribe: (fn) => engine.subscribe(fn),
+    getValue: () => engine.getSnapshot(),
+  });
+  
+  createEffect(() => {
+    engine.process(getOptions());
+  });
+  
+  onCleanup(() => engine.destroy());
+  
+  return state;
+}
+```
+
+</CodeGroup>
+
+## Caching Behavior
+
+The engine maintains an internal cache of loaded images and measurements:
+
+- **Cache key:** Image `src` URL
+- **Cache invalidation:** When `contrastThreshold`, `densityAware`, or `backgroundColor` options change, the entire cache is cleared
+- **Cache pruning:** When a logo is removed from the `logos` array, its cache entry (including blob URLs) is automatically cleaned up
+- **Synchronous fast path:** If all logos are cached and no new measurements are needed, `process()` completes synchronously
+
+## Performance Considerations
+
+1. **Synchronous when cached:** Subsequent `process()` calls with the same logos (and measurement options) complete instantly
+2. **Automatic cancellation:** Calling `process()` while another is in-flight cancels the previous one
+3. **Efficient change detection:** `getSnapshot()` returns the same object reference if nothing changed, enabling `===` checks
+4. **Memory management:** Always call `destroy()` to prevent blob URL leaks
+
+## Related
+
+- [ProcessOptions](/api-reference/types#processoptions) — Options passed to `process()`
+- [LogoSoupState](/api-reference/types#logosoupstate) — State object shape
+- [NormalizedLogo](/api-reference/types#normalizedlogo) — Normalized logo structure
+- [getVisualCenterTransform](/api-reference/get-visual-center-transform) — Compute alignment transforms

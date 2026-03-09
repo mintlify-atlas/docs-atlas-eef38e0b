@@ -1,0 +1,355 @@
+---
+title: Solid
+description: Use Logo Soup in SolidJS applications with fine-grained reactivity
+---
+
+## Installation
+
+```bash
+npm install @sanity-labs/logo-soup
+```
+
+Logo Soup has optional peer dependencies. For Solid:
+
+```bash
+npm install solid-js@^1.9
+```
+
+## Quick Start
+
+The `useLogoSoup` primitive integrates with Solid's fine-grained reactivity:
+
+```tsx
+import { useLogoSoup } from "@sanity-labs/logo-soup/solid";
+import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+import { For, Show } from "solid-js";
+
+function LogoStrip() {
+  const result = useLogoSoup(() => ({
+    logos: ["/logos/acme.svg", "/logos/globex.svg"],
+  }));
+
+  return (
+    <Show when={result.isReady}>
+      <For each={result.normalizedLogos}>
+        {(logo) => (
+          <img
+            src={logo.src}
+            alt={logo.alt}
+            width={logo.normalizedWidth}
+            height={logo.normalizedHeight}
+            style={{
+              transform: getVisualCenterTransform(logo, "visual-center-y"),
+            }}
+          />
+        )}
+      </For>
+    </Show>
+  );
+}
+```
+
+## API
+
+### useLogoSoup
+
+**Signature:**
+
+```ts
+function useLogoSoup(optionsFn: () => ProcessOptions): UseLogoSoupResult
+```
+
+**Options:** A **getter function** that returns process options. Solid tracks reactive dependencies inside this function.
+
+```ts
+type ProcessOptions = {
+  logos: (string | LogoSource)[];
+  baseSize?: number;
+  scaleFactor?: number;
+  contrastThreshold?: number;
+  densityAware?: boolean;
+  densityFactor?: number;
+  cropToContent?: boolean;
+  backgroundColor?: BackgroundColor;
+};
+```
+
+**Return Value:**
+
+```ts
+type UseLogoSoupResult = {
+  readonly isLoading: boolean;
+  readonly isReady: boolean;
+  readonly normalizedLogos: NormalizedLogo[];
+  readonly error: Error | null;
+};
+```
+
+<Note>
+  All return properties are **reactive getters**. Solid automatically tracks when you access them, so components re-render when values change.
+</Note>
+
+## Reactive Options
+
+Pass a getter function that reads signals. When any signal changes, Solid re-runs the getter and triggers re-processing:
+
+```tsx
+import { createSignal } from "solid-js";
+import { useLogoSoup } from "@sanity-labs/logo-soup/solid";
+
+function DynamicLogos() {
+  const [logos, setLogos] = createSignal(["/logo1.svg", "/logo2.svg"]);
+  const [size, setSize] = createSignal(48);
+
+  // Solid tracks logos() and size() reads inside this getter
+  const result = useLogoSoup(() => ({
+    logos: logos(),
+    baseSize: size(),
+  }));
+
+  // When logos or size change, processing automatically re-runs
+  return (
+    <div>
+      <button onClick={() => setSize(size() + 8)}>Increase Size</button>
+      {/* ... render logos ... */}
+    </div>
+  );
+}
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="Basic Strip">
+    ```tsx
+    import { useLogoSoup } from "@sanity-labs/logo-soup/solid";
+    import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+    import { For, Show } from "solid-js";
+
+    function LogoStrip() {
+      const result = useLogoSoup(() => ({
+        logos: [
+          { src: "/logos/acme.svg", alt: "Acme Corp" },
+          { src: "/logos/globex.svg", alt: "Globex" },
+          { src: "/logos/initech.svg", alt: "Initech" },
+        ],
+        baseSize: 48,
+      }));
+
+      return (
+        <Show when={result.isReady}>
+          <div style={{ display: "flex", gap: "2rem", "justify-content": "center" }}>
+            <For each={result.normalizedLogos}>
+              {(logo) => (
+                <img
+                  src={logo.src}
+                  alt={logo.alt}
+                  width={logo.normalizedWidth}
+                  height={logo.normalizedHeight}
+                  style={{
+                    transform: getVisualCenterTransform(logo, "visual-center-y"),
+                  }}
+                />
+              )}
+            </For>
+          </div>
+        </Show>
+      );
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Custom Grid">
+    ```tsx
+    import { useLogoSoup } from "@sanity-labs/logo-soup/solid";
+    import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+    import { For, Show } from "solid-js";
+
+    function LogoGrid(props: { logos: string[] }) {
+      const result = useLogoSoup(() => ({
+        logos: props.logos,
+        baseSize: 64,
+        cropToContent: true,
+      }));
+
+      return (
+        <div>
+          <Show when={result.isLoading}>
+            <p>Loading logos...</p>
+          </Show>
+          
+          <Show when={result.isReady}>
+            <div
+              style={{
+                display: "grid",
+                "grid-template-columns": "repeat(2, 1fr)",
+                gap: "2rem",
+              }}
+            >
+              <For each={result.normalizedLogos}>
+                {(logo) => (
+                  <div
+                    style={{
+                      display: "flex",
+                      "align-items": "center",
+                      "justify-content": "center",
+                    }}
+                  >
+                    <img
+                      src={logo.croppedSrc || logo.src}
+                      alt={logo.alt}
+                      width={logo.normalizedWidth}
+                      height={logo.normalizedHeight}
+                      style={{
+                        transform: getVisualCenterTransform(logo, "visual-center"),
+                      }}
+                    />
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+          
+          <Show when={result.error}>
+            <p>Error: {result.error!.message}</p>
+          </Show>
+        </div>
+      );
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Interactive Controls">
+    ```tsx
+    import { createSignal } from "solid-js";
+    import { useLogoSoup } from "@sanity-labs/logo-soup/solid";
+    import { For, Show } from "solid-js";
+
+    function InteractiveLogos() {
+      const [logos, setLogos] = createSignal(["/logo1.svg", "/logo2.svg"]);
+      const [baseSize, setBaseSize] = createSignal(48);
+      const [cropEnabled, setCropEnabled] = createSignal(false);
+
+      const result = useLogoSoup(() => ({
+        logos: logos(),
+        baseSize: baseSize(),
+        cropToContent: cropEnabled(),
+      }));
+
+      const addLogo = () => {
+        setLogos([...logos(), `/logo${logos().length + 1}.svg`]);
+      };
+
+      return (
+        <div>
+          <div style={{ "margin-bottom": "1rem" }}>
+            <label>
+              Base Size: {baseSize()}px
+              <input
+                type="range"
+                min="24"
+                max="128"
+                value={baseSize()}
+                onInput={(e) => setBaseSize(Number(e.currentTarget.value))}
+              />
+            </label>
+            
+            <label style={{ "margin-left": "1rem" }}>
+              <input
+                type="checkbox"
+                checked={cropEnabled()}
+                onChange={(e) => setCropEnabled(e.currentTarget.checked)}
+              />
+              Crop whitespace
+            </label>
+            
+            <button onClick={addLogo} style={{ "margin-left": "1rem" }}>
+              Add Logo
+            </button>
+          </div>
+
+          <Show when={result.isReady}>
+            <div style={{ display: "flex", gap: "2rem" }}>
+              <For each={result.normalizedLogos}>
+                {(logo) => (
+                  <img
+                    src={logo.croppedSrc || logo.src}
+                    alt={logo.alt}
+                    width={logo.normalizedWidth}
+                    height={logo.normalizedHeight}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## TypeScript
+
+All Solid exports are fully typed:
+
+```ts
+import type {
+  UseLogoSoupResult,
+} from "@sanity-labs/logo-soup/solid";
+
+import type {
+  ProcessOptions,
+  LogoSource,
+  NormalizedLogo,
+  AlignmentMode,
+  BackgroundColor,
+} from "@sanity-labs/logo-soup";
+```
+
+## How It Works
+
+The Solid adapter uses:
+
+- `from()` to convert the engine's subscribe/getSnapshot into a signal
+- `createEffect` to re-run processing when the options getter's dependencies change
+- Reactive getters on the return object so Solid can track fine-grained updates
+- `onCleanup` for automatic engine cleanup
+
+```ts
+import { from, createEffect, onCleanup } from "solid-js";
+import { createLogoSoup as createEngine } from "../core/create-logo-soup";
+
+export function useLogoSoup(optionsFn: () => ProcessOptions) {
+  const engine = createEngine();
+  
+  // from() creates a signal from the engine's subscribe/getSnapshot
+  const state = from<LogoSoupState>((set) => {
+    set(engine.getSnapshot());
+    return engine.subscribe(() => set(engine.getSnapshot()));
+  });
+  
+  // createEffect re-runs when dependencies inside optionsFn() change
+  createEffect(() => {
+    engine.process(optionsFn());
+  });
+  
+  onCleanup(() => engine.destroy());
+  
+  return {
+    get isLoading() {
+      return (state() ?? IDLE_STATE).status === "loading";
+    },
+    get normalizedLogos() {
+      return (state() ?? IDLE_STATE).normalizedLogos;
+    },
+    // ... other getters
+  };
+}
+```
+
+## See Also
+
+- [API Reference](/options) - Complete options reference
+- [Alignment](/how-it-works) - How visual centering works
+- [Custom Adapters](/frameworks/custom) - Build your own framework adapter

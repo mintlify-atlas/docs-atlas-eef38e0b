@@ -1,97 +1,99 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Logo Soup"
+description: "A tiny framework-agnostic library that normalizes and harmonizes logo visuals"
 ---
 
-## Setting up
+<Note>
+  **Make logos look good together** — Logo Soup automatically normalizes logo sizes, weights, and visual balance across any framework.
+</Note>
 
-Get your documentation site up and running in minutes.
+## Quick Install
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+<CodeGroup>
+```bash npm
+npm install @sanity-labs/logo-soup
+```
 
-## Make it yours
+```bash yarn
+yarn add @sanity-labs/logo-soup
+```
 
-Design a docs site that looks great and empowers your users.
+```bash pnpm
+pnpm add @sanity-labs/logo-soup
+```
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+```bash bun
+bun add @sanity-labs/logo-soup
+```
+</CodeGroup>
+
+## Framework Support
+
+Logo Soup works everywhere. Choose your framework:
+
+<CardGroup cols={2}>
+  <Card title="React" icon="react" href="/frameworks/react">
+    Use the `<LogoSoup>` component or `useLogoSoup` hook
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Vue" icon="vuejs" href="/frameworks/vue">
+    Use the `useLogoSoup` composable with full reactivity
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Svelte" icon="code" href="/frameworks/svelte">
+    Use `createLogoSoup` with Svelte 5 runes
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Solid" icon="code" href="/frameworks/solid">
+    Use the `useLogoSoup` primitive for reactive state
   </Card>
-</Columns>
+  <Card title="Angular" icon="angular" href="/frameworks/angular">
+    Inject `LogoSoupService` with signals
+  </Card>
+  <Card title="jQuery" icon="code" href="/frameworks/jquery">
+    Use the `$.fn.logoSoup` plugin
+  </Card>
+  <Card title="Vanilla JS" icon="js" href="/frameworks/vanilla">
+    Use the core engine directly
+  </Card>
+  <Card title="Custom Framework" icon="wrench" href="/frameworks/custom">
+    Build your own adapter
+  </Card>
+</CardGroup>
 
-## Create beautiful pages
+## Key Features
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Content Detection" icon="magnifying-glass">
+    Automatically finds true content boundaries and crops whitespace
+  </Card>
+  <Card title="Aspect Ratio Normalization" icon="arrows-left-right">
+    Balances wide and tall logos using configurable scale factors
+  </Card>
+  <Card title="Density Compensation" icon="weight-scale">
+    Adjusts sizing so bold logos don't overpower light ones
+  </Card>
+  <Card title="Visual Center Alignment" icon="arrows-up-down">
+    Aligns by visual weight, not geometric bounds
+  </Card>
+  <Card title="Client-Side Processing" icon="laptop">
+    No server required — runs entirely in the browser
+  </Card>
+  <Card title="Framework Agnostic" icon="code">
+    Works with React, Vue, Svelte, Solid, Angular, jQuery, and vanilla JS
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Get Started
 
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running in under 5 minutes
+  </Card>
+  <Card title="Configuration Options" icon="sliders" href="/options">
+    Customize normalization behavior
+  </Card>
+  <Card title="How It Works" icon="lightbulb" href="/how-it-works">
+    Deep dive into the algorithm
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/create-logo-soup">
+    Explore the core API
+  </Card>
+</CardGroup>

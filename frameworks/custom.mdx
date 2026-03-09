@@ -1,0 +1,474 @@
+---
+title: Custom Framework Adapter
+description: Build your own framework adapter for Logo Soup
+---
+
+## Overview
+
+Logo Soup's core engine is framework-agnostic. All framework adapters are thin wrappers (~30-80 lines) that bridge the engine's `subscribe` / `getSnapshot` interface into a framework's reactivity model.
+
+If your framework isn't supported yet, you can easily build your own adapter.
+
+## Core Engine Interface
+
+Every adapter works with the same core engine:
+
+```ts
+import { createLogoSoup } from "@sanity-labs/logo-soup";
+
+const engine = createLogoSoup();
+
+// Subscribe to state changes
+const unsubscribe = engine.subscribe(() => {
+  const state = engine.getSnapshot();
+  // Update your framework's reactive state
+});
+
+// Trigger processing
+engine.process({ logos: ["/logo1.svg"], baseSize: 48 });
+
+// Get current state synchronously
+const { status, normalizedLogos, error } = engine.getSnapshot();
+
+// Clean up
+engine.destroy();
+```
+
+### Engine API
+
+```ts
+type LogoSoupEngine = {
+  /** Trigger processing. Call when inputs change. */
+  process(options: ProcessOptions): void;
+
+  /** Subscribe to state changes. Returns unsubscribe function. */
+  subscribe(listener: () => void): () => void;
+
+  /** Get current immutable snapshot. Same reference if nothing changed. */
+  getSnapshot(): LogoSoupState;
+
+  /** Cleanup blob URLs, cancel in-flight work */
+  destroy(): void;
+};
+```
+
+```ts
+type LogoSoupState = {
+  status: "idle" | "loading" | "ready" | "error";
+  normalizedLogos: NormalizedLogo[];
+  error: Error | null;
+};
+```
+
+## Adapter Pattern
+
+All adapters follow this pattern:
+
+1. **Create the engine** (once per component instance)
+2. **Subscribe** to state changes
+3. **Update reactive state** when engine emits
+4. **Watch reactive inputs** and call `engine.process()` when they change
+5. **Cleanup** on component unmount
+
+## Examples by Framework
+
+<Tabs>
+  <Tab title="React">
+    React uses `useSyncExternalStore` for external subscriptions:
+
+    ```ts
+    import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+    import { createLogoSoup } from "@sanity-labs/logo-soup";
+
+    export function useLogoSoup(options: ProcessOptions) {
+      const engineRef = useRef<ReturnType<typeof createLogoSoup> | null>(null);
+      if (!engineRef.current) {
+        engineRef.current = createLogoSoup();
+      }
+      const engine = engineRef.current;
+
+      // Must be referentially stable
+      const subscribe = useCallback(
+        (onStoreChange: () => void) => engine.subscribe(onStoreChange),
+        [engine],
+      );
+      const getSnapshot = useCallback(() => engine.getSnapshot(), [engine]);
+
+      const state = useSyncExternalStore(subscribe, getSnapshot);
+
+      // Trigger processing when options change
+      useEffect(() => {
+        engine.process(options);
+      }, [engine, options.logos, options.baseSize /* ... */]);
+
+      // Cleanup on unmount
+      useEffect(() => () => engine.destroy(), [engine]);
+
+      return {
+        isLoading: state.status === "loading",
+        isReady: state.status === "ready",
+        normalizedLogos: state.normalizedLogos,
+        error: state.error,
+      };
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Vue">
+    Vue uses `shallowRef` for state and `watchEffect` for reactive dependencies:
+
+    ```ts
+    import { shallowRef, watchEffect, onScopeDispose, toValue, computed } from "vue";
+    import { createLogoSoup } from "@sanity-labs/logo-soup";
+
+    export function useLogoSoup(options: UseLogoSoupOptions) {
+      const engine = createLogoSoup();
+      const state = shallowRef(engine.getSnapshot());
+
+      const unsubscribe = engine.subscribe(() => {
+        state.value = engine.getSnapshot();
+      });
+
+      // watchEffect auto-tracks reactive reads inside it
+      watchEffect(() => {
+        engine.process({
+          logos: toValue(options.logos),
+          baseSize: toValue(options.baseSize),
+          // ... unwrap all options with toValue()
+        });
+      });
+
+      onScopeDispose(() => {
+        unsubscribe();
+        engine.destroy();
+      });
+
+      return {
+        state,
+        isLoading: computed(() => state.value.status === "loading"),
+        isReady: computed(() => state.value.status === "ready"),
+        normalizedLogos: computed(() => state.value.normalizedLogos),
+        error: computed(() => state.value.error),
+      };
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Svelte 5">
+    Svelte 5 uses `createSubscriber` from `svelte/reactivity`:
+
+    ```ts
+    import { createSubscriber } from "svelte/reactivity";
+    import { createLogoSoup as createEngine } from "@sanity-labs/logo-soup";
+
+    export function createLogoSoup() {
+      const engine = createEngine();
+
+      // createSubscriber returns a function that registers the caller as a subscriber
+      const subscribe = createSubscriber((update) => {
+        return engine.subscribe(update);
+      });
+
+      return {
+        process(options) {
+          engine.process(options);
+        },
+
+        // Reactive getters — reading these in $effect or template auto-subscribes
+        get state() {
+          subscribe();
+          return engine.getSnapshot();
+        },
+
+        get isLoading() {
+          subscribe();
+          return engine.getSnapshot().status === "loading";
+        },
+
+        get isReady() {
+          subscribe();
+          return engine.getSnapshot().status === "ready";
+        },
+
+        get normalizedLogos() {
+          subscribe();
+          return engine.getSnapshot().normalizedLogos;
+        },
+
+        get error() {
+          subscribe();
+          return engine.getSnapshot().error;
+        },
+
+        destroy() {
+          engine.destroy();
+        },
+      };
+    }
+    ```
+
+    Usage:
+    ```svelte
+    <script>
+      const soup = createLogoSoup();
+      
+      $effect(() => {
+        soup.process({ logos });
+      });
+      
+      $effect(() => {
+        return () => soup.destroy();
+      });
+    </script>
+
+    {#if soup.isReady}
+      {#each soup.normalizedLogos as logo}
+        <img src={logo.src} alt={logo.alt} />
+      {/each}
+    {/if}
+    ```
+  </Tab>
+  
+  <Tab title="Solid">
+    Solid uses `from()` to convert subscribe/getSnapshot into a signal:
+
+    ```ts
+    import { from, createEffect, onCleanup } from "solid-js";
+    import { createLogoSoup as createEngine } from "@sanity-labs/logo-soup";
+
+    export function useLogoSoup(optionsFn: () => ProcessOptions) {
+      const engine = createEngine();
+
+      // from() accepts a producer function: (setter) => unsubscribe
+      const state = from((set) => {
+        set(engine.getSnapshot());
+        return engine.subscribe(() => set(engine.getSnapshot()));
+      });
+
+      // createEffect re-runs when dependencies inside optionsFn() change
+      createEffect(() => {
+        engine.process(optionsFn());
+      });
+
+      onCleanup(() => engine.destroy());
+
+      return {
+        get isLoading() {
+          return state()?.status === "loading";
+        },
+        get isReady() {
+          return state()?.status === "ready";
+        },
+        get normalizedLogos() {
+          return state()?.normalizedLogos ?? [];
+        },
+        get error() {
+          return state()?.error ?? null;
+        },
+      };
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Angular">
+    Angular uses `signal()` for reactive state and `DestroyRef` for cleanup:
+
+    ```ts
+    import { Injectable, signal, inject, DestroyRef } from "@angular/core";
+    import { createLogoSoup as createEngine } from "@sanity-labs/logo-soup";
+
+    @Injectable()
+    export class LogoSoupService {
+      private engine = createEngine();
+      private destroyRef = inject(DestroyRef);
+
+      private readonly _state = signal(engine.getSnapshot());
+      readonly state = this._state.asReadonly();
+
+      constructor() {
+        const unsubscribe = this.engine.subscribe(() => {
+          this._state.set(this.engine.getSnapshot());
+        });
+
+        this.destroyRef.onDestroy(() => {
+          unsubscribe();
+          this.engine.destroy();
+        });
+      }
+
+      process(options: ProcessOptions): void {
+        this.engine.process(options);
+      }
+    }
+    ```
+
+    Usage:
+    ```ts
+    @Component({
+      providers: [LogoSoupService],
+      template: `
+        @for (logo of service.state().normalizedLogos; track logo.src) {
+          <img [src]="logo.src" [alt]="logo.alt" />
+        }
+      `,
+    })
+    export class MyComponent {
+      protected service = inject(LogoSoupService);
+
+      constructor() {
+        effect(() => {
+          this.service.process({ logos: this.logos() });
+        });
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Preact Signals">
+    Example for frameworks with signals (Preact, Qwik, etc.):
+
+    ```ts
+    import { signal, effect } from "@preact/signals";
+    import { createLogoSoup } from "@sanity-labs/logo-soup";
+
+    export function createLogoSoupSignal() {
+      const engine = createLogoSoup();
+      const state = signal(engine.getSnapshot());
+
+      engine.subscribe(() => {
+        state.value = engine.getSnapshot();
+      });
+
+      return {
+        state,
+        process(options) {
+          engine.process(options);
+        },
+        destroy() {
+          engine.destroy();
+        },
+      };
+    }
+    ```
+
+    Usage:
+    ```tsx
+    import { useSignal, useEffect } from "@preact/signals";
+
+    function LogoStrip() {
+      const logos = useSignal(["/logo1.svg", "/logo2.svg"]);
+      const soup = createLogoSoupSignal();
+
+      useEffect(() => {
+        soup.process({ logos: logos.value });
+      }, [logos.value]);
+
+      useEffect(() => {
+        return () => soup.destroy();
+      }, []);
+
+      return (
+        <div>
+          {soup.state.value.normalizedLogos.map((logo) => (
+            <img key={logo.src} src={logo.src} alt={logo.alt} />
+          ))}
+        </div>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Key Considerations
+
+### 1. State Synchronization
+
+The engine emits on **every state change**. Your adapter should update the framework's reactive state:
+
+```ts
+engine.subscribe(() => {
+  frameworkState.value = engine.getSnapshot();
+});
+```
+
+### 2. Reactive Processing
+
+Watch for input changes and re-trigger processing:
+
+```ts
+// React
+useEffect(() => {
+  engine.process(options);
+}, [options.logos, options.baseSize]);
+
+// Vue
+watchEffect(() => {
+  engine.process({ logos: toValue(options.logos) });
+});
+
+// Solid
+createEffect(() => {
+  engine.process(optionsFn());
+});
+```
+
+### 3. Cleanup
+
+Always clean up on unmount:
+
+```ts
+// Unsubscribe
+const unsubscribe = engine.subscribe(...);
+onCleanup(unsubscribe);
+
+// Destroy engine
+onCleanup(() => engine.destroy());
+```
+
+### 4. Referential Stability
+
+The snapshot reference only changes when values actually change. This is important for performance:
+
+```ts
+const prev = engine.getSnapshot();
+const next = engine.getSnapshot();
+
+// If nothing changed:
+prev === next; // true
+
+// After a change:
+prev !== next; // true
+```
+
+## Testing Your Adapter
+
+Test these scenarios:
+
+1. **Initial load** — Process logos on mount
+2. **State updates** — Verify reactive state changes
+3. **Input changes** — Re-process when options change
+4. **Error handling** — Handle failed image loads
+5. **Cleanup** — No memory leaks on unmount
+6. **Concurrent updates** — Cancel previous processing when inputs change
+
+## TypeScript
+
+Import types from the core package:
+
+```ts
+import type {
+  LogoSoupEngine,
+  LogoSoupState,
+  ProcessOptions,
+  LogoSource,
+  NormalizedLogo,
+  AlignmentMode,
+  BackgroundColor,
+} from "@sanity-labs/logo-soup";
+```
+
+## See Also
+
+- [Vanilla JS](/frameworks/vanilla) - Using the core engine directly
+- [API Reference](/options) - Complete options reference
+- [Source Code](https://github.com/sanity-labs/logo-soup/tree/main/src) - View existing adapters

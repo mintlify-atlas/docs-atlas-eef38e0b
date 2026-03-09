@@ -1,0 +1,252 @@
+---
+title: getVisualCenterTransform
+description: Compute CSS transform for visual center alignment
+---
+
+## Overview
+
+The `getVisualCenterTransform()` function computes a CSS `transform` string that shifts a logo to align by its visual center rather than its geometric bounds.
+
+Use this when rendering normalized logos to achieve better optical alignment, especially for logos with asymmetric visual weight distribution.
+
+## Signature
+
+```typescript
+function getVisualCenterTransform(
+  logo: NormalizedLogo,
+  alignBy?: AlignmentMode
+): string | undefined
+```
+
+## Parameters
+
+<ParamField path="logo" type="NormalizedLogo" required>
+  The normalized logo object returned from the engine's `normalizedLogos` array.
+  
+  Must include the `visualCenter` property (computed during processing if `densityAware` is enabled).
+</ParamField>
+
+<ParamField path="alignBy" type="AlignmentMode" default="'bounds'">
+  The alignment mode to use:
+  
+  - `'bounds'` — No transform, align by geometric center (bounding box)
+  - `'visual-center'` — Align by visual weight center on both X and Y axes
+  - `'visual-center-x'` — Align by visual center horizontally only
+  - `'visual-center-y'` — Align by visual center vertically only (recommended for horizontal logo strips)
+</ParamField>
+
+## Return Value
+
+Returns a CSS transform string in the format `translate(Xpx, Ypx)`, or `undefined` if:
+- `alignBy` is `'bounds'`
+- The logo has no `visualCenter` data
+- The computed offset is too small to matter (< 0.5px)
+
+## Alignment Modes
+
+<ResponseField name="bounds">
+  **No transformation.** Logos align by their geometric bounding box center.
+  
+  Use when you want consistent mathematical spacing without optical adjustments.
+</ResponseField>
+
+<ResponseField name="visual-center">
+  **Full visual alignment.** Shifts logos both horizontally and vertically to align by visual weight center.
+  
+  Best for grid layouts or centered single logos.
+</ResponseField>
+
+<ResponseField name="visual-center-x">
+  **Horizontal visual alignment only.** Shifts logos left/right to align by visual weight center, but maintains geometric vertical alignment.
+  
+  Useful for vertical logo stacks.
+</ResponseField>
+
+<ResponseField name="visual-center-y">
+  **Vertical visual alignment only** (recommended default). Shifts logos up/down to align by visual weight center, but maintains geometric horizontal alignment.
+  
+  Perfect for horizontal logo strips — the most common layout. Prevents heavy/bold logos from appearing to sink and light/thin logos from appearing to float.
+</ResponseField>
+
+## Usage Examples
+
+### Basic Usage
+
+```typescript
+import {
+  createLogoSoup,
+  getVisualCenterTransform,
+} from '@sanity-labs/logo-soup';
+
+const engine = createLogoSoup();
+
+engine.subscribe(() => {
+  const { normalizedLogos } = engine.getSnapshot();
+  
+  normalizedLogos.forEach((logo) => {
+    const transform = getVisualCenterTransform(logo, 'visual-center-y');
+    console.log(`${logo.alt}: ${transform ?? 'none'}`);
+    // Output: "Acme Corp: translate(0px, -2.3px)"
+  });
+});
+
+engine.process({
+  logos: ['/acme.svg', '/globex.svg'],
+  densityAware: true, // Required for visual center computation
+});
+```
+
+### React Component
+
+```tsx
+import { useLogoSoup } from '@sanity-labs/logo-soup/react';
+import { getVisualCenterTransform } from '@sanity-labs/logo-soup';
+
+function LogoGrid() {
+  const { isReady, normalizedLogos } = useLogoSoup({
+    logos: ['/logo1.svg', '/logo2.svg', '/logo3.svg'],
+    baseSize: 64,
+  });
+  
+  if (!isReady) return <div>Loading...</div>;
+  
+  return (
+    <div className="grid grid-cols-3 gap-8">
+      {normalizedLogos.map((logo) => (
+        <img
+          key={logo.src}
+          src={logo.src}
+          alt={logo.alt}
+          width={logo.normalizedWidth}
+          height={logo.normalizedHeight}
+          style={{
+            transform: getVisualCenterTransform(logo, 'visual-center'),
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+### Horizontal Strip (Recommended)
+
+```tsx
+import { useLogoSoup } from '@sanity-labs/logo-soup/react';
+import { getVisualCenterTransform } from '@sanity-labs/logo-soup';
+
+function LogoStrip() {
+  const { isReady, normalizedLogos } = useLogoSoup({
+    logos: ['/acme.svg', '/globex.svg', '/initech.svg'],
+    baseSize: 48,
+  });
+  
+  if (!isReady) return null;
+  
+  return (
+    <div className="flex items-center gap-6">
+      {normalizedLogos.map((logo) => (
+        <img
+          key={logo.src}
+          src={logo.src}
+          alt={logo.alt}
+          width={logo.normalizedWidth}
+          height={logo.normalizedHeight}
+          style={{
+            // Align by visual center vertically, bounds horizontally
+            transform: getVisualCenterTransform(logo, 'visual-center-y'),
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+### Vue Component
+
+```vue
+<script setup>
+import { useLogoSoup } from '@sanity-labs/logo-soup/vue';
+import { getVisualCenterTransform } from '@sanity-labs/logo-soup';
+
+const { isReady, normalizedLogos } = useLogoSoup({
+  logos: ['/logo1.svg', '/logo2.svg'],
+  baseSize: 56,
+});
+</script>
+
+<template>
+  <div v-if="isReady" class="flex gap-4">
+    <img
+      v-for="logo in normalizedLogos"
+      :key="logo.src"
+      :src="logo.src"
+      :alt="logo.alt"
+      :width="logo.normalizedWidth"
+      :height="logo.normalizedHeight"
+      :style="{
+        transform: getVisualCenterTransform(logo, 'visual-center-y'),
+      }"
+    />
+  </div>
+</template>
+```
+
+### Conditional Transform
+
+```typescript
+const logo = normalizedLogos[0];
+const transform = getVisualCenterTransform(logo, 'visual-center-y');
+
+if (transform) {
+  // Apply transform — logo needs adjustment
+  element.style.transform = transform;
+} else {
+  // No transform needed — logo is already well-aligned
+  element.style.transform = 'none';
+}
+```
+
+## How It Works
+
+1. **Computes scale factors** based on the logo's normalized dimensions and original/cropped size
+2. **Calculates offsets** from the visual center data (stored in `logo.visualCenter.offsetX` and `offsetY`)
+3. **Applies axis filtering** based on the alignment mode
+4. **Rounds offsets** to 0.1px precision to avoid subpixel rendering issues
+5. **Returns `undefined`** if the offset is negligible (< 0.5px)
+
+## Visual Center Data
+
+The `visualCenter` property is computed during processing when `densityAware: true` (default):
+
+```typescript
+type VisualCenter = {
+  x: number;       // Visual center X coordinate in pixels
+  y: number;       // Visual center Y coordinate in pixels
+  offsetX: number; // Horizontal offset from geometric center
+  offsetY: number; // Vertical offset from geometric center
+};
+```
+
+If `densityAware` is `false` or visual center detection fails, the logo will not have this property and the function returns `undefined`.
+
+## When to Use Each Mode
+
+| Layout | Recommended Mode | Reason |
+|--------|-----------------|--------|
+| Horizontal strip | `visual-center-y` | Prevents sinking/floating effect |
+| Vertical stack | `visual-center-x` | Aligns asymmetric logos |
+| Grid | `visual-center` | Full optical alignment |
+| Tight mathematical layout | `bounds` | Consistent geometric spacing |
+
+## Performance
+
+This function performs simple arithmetic operations and is safe to call on every render. The computation is deterministic and does not trigger any side effects.
+
+## Related
+
+- [NormalizedLogo](/api-reference/types#normalizedlogo) — Logo object structure
+- [AlignmentMode](/api-reference/types#alignmentmode) — Alignment mode type
+- [VisualCenter](/api-reference/types#visualcenter) — Visual center data structure
+- [createLogoSoup](/api-reference/create-logo-soup) — Core engine

@@ -1,0 +1,501 @@
+---
+title: Types
+description: TypeScript type definitions for Logo Soup
+---
+
+## Overview
+
+All TypeScript types exported by `@sanity-labs/logo-soup`. Import them from the main package:
+
+```typescript
+import type {
+  LogoSoupEngine,
+  LogoSoupState,
+  ProcessOptions,
+  NormalizedLogo,
+  AlignmentMode,
+  LogoSource,
+  VisualCenter,
+  BoundingBox,
+  MeasurementResult,
+  BackgroundColor,
+} from '@sanity-labs/logo-soup';
+```
+
+---
+
+## LogoSoupEngine
+
+The engine interface returned by `createLogoSoup()`.
+
+```typescript
+type LogoSoupEngine = {
+  process(options: ProcessOptions): void;
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): LogoSoupState;
+  destroy(): void;
+};
+```
+
+<ResponseField name="process" type="(options: ProcessOptions) => void">
+  Trigger a processing run. Call when inputs change. Automatically cancels any in-flight work.
+</ResponseField>
+
+<ResponseField name="subscribe" type="(listener: () => void) => () => void">
+  Subscribe to state changes. Returns an unsubscribe function.
+</ResponseField>
+
+<ResponseField name="getSnapshot" type="() => LogoSoupState">
+  Get the current immutable state snapshot. Returns the same reference if nothing changed.
+</ResponseField>
+
+<ResponseField name="destroy" type="() => void">
+  Clean up resources: revoke blob URLs, cancel work, clear cache, remove listeners.
+</ResponseField>
+
+See [createLogoSoup](/api-reference/create-logo-soup) for detailed documentation.
+
+---
+
+## LogoSoupState
+
+Immutable state snapshot returned by `engine.getSnapshot()`.
+
+```typescript
+type LogoSoupState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  normalizedLogos: NormalizedLogo[];
+  error: Error | null;
+};
+```
+
+<ResponseField name="status" type="'idle' | 'loading' | 'ready' | 'error'" required>
+  Current processing status:
+  - `idle` — Initial state before first `process()` call
+  - `loading` — Loading or measuring images
+  - `ready` — Processing complete, normalized logos available
+  - `error` — All logos failed to load
+</ResponseField>
+
+<ResponseField name="normalizedLogos" type="NormalizedLogo[]" required>
+  Array of successfully processed and normalized logos. Empty if not ready or if all failed.
+</ResponseField>
+
+<ResponseField name="error" type="Error | null">
+  Error object if status is `error`, otherwise `null`.
+</ResponseField>
+
+---
+
+## ProcessOptions
+
+Options passed to `engine.process()`.
+
+```typescript
+type ProcessOptions = {
+  logos: (string | LogoSource)[];
+  baseSize?: number;
+  scaleFactor?: number;
+  contrastThreshold?: number;
+  densityAware?: boolean;
+  densityFactor?: number;
+  cropToContent?: boolean;
+  backgroundColor?: BackgroundColor;
+};
+```
+
+<ParamField path="logos" type="(string | LogoSource)[]" required>
+  Array of logo URLs (strings) or logo objects with `src` and optional `alt` text.
+  
+  ```typescript
+  logos: [
+    '/logo1.svg',
+    { src: '/logo2.svg', alt: 'Acme Corp' },
+  ]
+  ```
+</ParamField>
+
+<ParamField path="baseSize" type="number" default="48">
+  Target size in pixels. All logos are normalized to this approximate size.
+</ParamField>
+
+<ParamField path="scaleFactor" type="number" default="0.5">
+  Shape handling factor (0-1):
+  - `0` = Uniform widths (tall logos appear larger)
+  - `1` = Uniform heights (wide logos appear larger)
+  - `0.5` = Balanced (recommended)
+</ParamField>
+
+<ParamField path="contrastThreshold" type="number" default="10">
+  Minimum contrast (0-255) for content detection. Lower values detect more subtle edges, higher values only detect high-contrast content.
+</ParamField>
+
+<ParamField path="densityAware" type="boolean" default="true">
+  Enable density compensation. When enabled:
+  - Dense/bold logos are scaled down
+  - Light/thin logos are scaled up
+  - Visual center data is computed for alignment
+</ParamField>
+
+<ParamField path="densityFactor" type="number" default="0.5">
+  Strength of density compensation (0-1). Only applies when `densityAware: true`.
+  - `0` = No density adjustment
+  - `1` = Full density adjustment
+  - `0.5` = Balanced (recommended)
+</ParamField>
+
+<ParamField path="cropToContent" type="boolean" default="false">
+  Automatically crop whitespace/padding from logos. Creates blob URLs for cropped versions.
+  
+  Enable when logos have inconsistent padding baked into the images.
+</ParamField>
+
+<ParamField path="backgroundColor" type="BackgroundColor">
+  Background color for contrast detection on opaque logos. Can be:
+  - CSS color string: `'#ffffff'`, `'rgb(255, 255, 255)'`, `'hsl(0, 0%, 100%)'`
+  - RGB tuple: `[255, 255, 255]`
+  
+  If omitted, the background is auto-detected from the logo's corner pixels.
+</ParamField>
+
+---
+
+## NormalizedLogo
+
+A processed and normalized logo with computed dimensions and metadata.
+
+```typescript
+type NormalizedLogo = {
+  src: string;
+  alt: string;
+  originalWidth: number;
+  originalHeight: number;
+  contentBox?: BoundingBox;
+  normalizedWidth: number;
+  normalizedHeight: number;
+  aspectRatio: number;
+  pixelDensity?: number;
+  visualCenter?: VisualCenter;
+  croppedSrc?: string;
+};
+```
+
+<ResponseField name="src" type="string" required>
+  Original logo URL.
+</ResponseField>
+
+<ResponseField name="alt" type="string" required>
+  Alt text for accessibility. Empty string if not provided.
+</ResponseField>
+
+<ResponseField name="originalWidth" type="number" required>
+  Original image width in pixels.
+</ResponseField>
+
+<ResponseField name="originalHeight" type="number" required>
+  Original image height in pixels.
+</ResponseField>
+
+<ResponseField name="contentBox" type="BoundingBox">
+  Detected content bounding box (excludes whitespace/padding). Present if content detection found a smaller region than the full image.
+</ResponseField>
+
+<ResponseField name="normalizedWidth" type="number" required>
+  Computed width for rendering in pixels, after normalization.
+</ResponseField>
+
+<ResponseField name="normalizedHeight" type="number" required>
+  Computed height for rendering in pixels, after normalization.
+</ResponseField>
+
+<ResponseField name="aspectRatio" type="number" required>
+  Aspect ratio (`width / height`) of the content box or original image.
+</ResponseField>
+
+<ResponseField name="pixelDensity" type="number">
+  Visual weight density (0-1). Higher values indicate denser/bolder logos. Present when `densityAware: true`.
+</ResponseField>
+
+<ResponseField name="visualCenter" type="VisualCenter">
+  Visual weight center data. Present when `densityAware: true` and detection succeeded.
+  
+  Use with `getVisualCenterTransform()` for optical alignment.
+</ResponseField>
+
+<ResponseField name="croppedSrc" type="string">
+  Blob URL for the cropped version of the logo. Present when `cropToContent: true` and content box is smaller than the original.
+  
+  Use this instead of `src` when rendering to eliminate padding.
+</ResponseField>
+
+### Usage Example
+
+```typescript
+const logo: NormalizedLogo = {
+  src: '/logos/acme.svg',
+  alt: 'Acme Corp',
+  originalWidth: 200,
+  originalHeight: 100,
+  contentBox: { x: 20, y: 10, width: 160, height: 80 },
+  normalizedWidth: 96,
+  normalizedHeight: 48,
+  aspectRatio: 2.0,
+  pixelDensity: 0.45,
+  visualCenter: { x: 100, y: 50, offsetX: -5, offsetY: 2 },
+  croppedSrc: 'blob:http://localhost:3000/abc-123',
+};
+
+// Render using normalized dimensions
+<img
+  src={logo.croppedSrc || logo.src}
+  alt={logo.alt}
+  width={logo.normalizedWidth}
+  height={logo.normalizedHeight}
+/>
+```
+
+---
+
+## AlignmentMode
+
+Alignment mode for visual center transforms.
+
+```typescript
+type AlignmentMode =
+  | 'bounds'
+  | 'visual-center'
+  | 'visual-center-x'
+  | 'visual-center-y';
+```
+
+<ResponseField name="bounds">
+  Align by geometric center (bounding box). No transform applied.
+</ResponseField>
+
+<ResponseField name="visual-center">
+  Align by visual weight center on both X and Y axes.
+</ResponseField>
+
+<ResponseField name="visual-center-x">
+  Align by visual center horizontally only.
+</ResponseField>
+
+<ResponseField name="visual-center-y">
+  Align by visual center vertically only. Recommended for horizontal logo strips.
+</ResponseField>
+
+See [getVisualCenterTransform](/api-reference/get-visual-center-transform) for usage details.
+
+---
+
+## LogoSource
+
+Logo input with optional alt text.
+
+```typescript
+type LogoSource = {
+  src: string;
+  alt?: string;
+};
+```
+
+<ParamField path="src" type="string" required>
+  Logo URL. Can be relative, absolute, or a data URL.
+</ParamField>
+
+<ParamField path="alt" type="string">
+  Alt text for accessibility. If omitted, defaults to empty string.
+</ParamField>
+
+### Usage
+
+```typescript
+// As a string
+logos: ['/logo1.svg', '/logo2.svg']
+
+// As LogoSource objects
+logos: [
+  { src: '/logo1.svg', alt: 'Acme Corp' },
+  { src: '/logo2.svg', alt: 'Globex Corporation' },
+]
+
+// Mixed
+logos: [
+  '/logo1.svg',
+  { src: '/logo2.svg', alt: 'Globex Corporation' },
+]
+```
+
+---
+
+## VisualCenter
+
+Visual weight center data for a logo.
+
+```typescript
+type VisualCenter = {
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+};
+```
+
+<ResponseField name="x" type="number" required>
+  Visual center X coordinate in pixels (relative to the content box or original image).
+</ResponseField>
+
+<ResponseField name="y" type="number" required>
+  Visual center Y coordinate in pixels (relative to the content box or original image).
+</ResponseField>
+
+<ResponseField name="offsetX" type="number" required>
+  Horizontal offset in pixels from the geometric center. Negative = visual center is left of geometric center.
+</ResponseField>
+
+<ResponseField name="offsetY" type="number" required>
+  Vertical offset in pixels from the geometric center. Negative = visual center is above geometric center.
+</ResponseField>
+
+---
+
+## BoundingBox
+
+Rectangular region in pixels.
+
+```typescript
+type BoundingBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+```
+
+<ResponseField name="x" type="number" required>
+  Left edge X coordinate in pixels.
+</ResponseField>
+
+<ResponseField name="y" type="number" required>
+  Top edge Y coordinate in pixels.
+</ResponseField>
+
+<ResponseField name="width" type="number" required>
+  Width in pixels.
+</ResponseField>
+
+<ResponseField name="height" type="number" required>
+  Height in pixels.
+</ResponseField>
+
+---
+
+## MeasurementResult
+
+Raw measurement data for a logo (internal).
+
+```typescript
+type MeasurementResult = {
+  width: number;
+  height: number;
+  contentBox?: BoundingBox;
+  pixelDensity?: number;
+  visualCenter?: VisualCenter;
+  backgroundLuminance?: number;
+};
+```
+
+<ResponseField name="width" type="number" required>
+  Original image width.
+</ResponseField>
+
+<ResponseField name="height" type="number" required>
+  Original image height.
+</ResponseField>
+
+<ResponseField name="contentBox" type="BoundingBox">
+  Detected content region (if smaller than full image).
+</ResponseField>
+
+<ResponseField name="pixelDensity" type="number">
+  Visual weight density (0-1).
+</ResponseField>
+
+<ResponseField name="visualCenter" type="VisualCenter">
+  Visual weight center data.
+</ResponseField>
+
+<ResponseField name="backgroundLuminance" type="number">
+  Detected background luminance (0-255). Used for irradiation compensation.
+</ResponseField>
+
+This type is primarily for internal use. You'll typically work with `NormalizedLogo` instead.
+
+---
+
+## BackgroundColor
+
+Background color for contrast detection.
+
+```typescript
+type BackgroundColor = CSSColor | [number, number, number];
+
+type CSSColor = HexColor | RGBFunction | HSLFunction | (string & {});
+type HexColor = `#${string}`;
+type RGBFunction = `rgb(${string})` | `rgba(${string})`;
+type HSLFunction = `hsl(${string})` | `hsla(${string})`;
+```
+
+### Accepted Formats
+
+<ResponseField name="Hex color" type="string">
+  ```typescript
+  backgroundColor: '#ffffff'
+  backgroundColor: '#fff'
+  ```
+</ResponseField>
+
+<ResponseField name="RGB/RGBA function" type="string">
+  ```typescript
+  backgroundColor: 'rgb(255, 255, 255)'
+  backgroundColor: 'rgba(255, 255, 255, 1)'
+  ```
+</ResponseField>
+
+<ResponseField name="HSL/HSLA function" type="string">
+  ```typescript
+  backgroundColor: 'hsl(0, 0%, 100%)'
+  backgroundColor: 'hsla(0, 0%, 100%, 1)'
+  ```
+</ResponseField>
+
+<ResponseField name="RGB tuple" type="[number, number, number]">
+  ```typescript
+  backgroundColor: [255, 255, 255]
+  ```
+</ResponseField>
+
+<ResponseField name="Any CSS color" type="string">
+  ```typescript
+  backgroundColor: 'white'
+  backgroundColor: 'currentColor'
+  ```
+  
+  Any valid CSS color string is accepted, though not all are type-safe.
+</ResponseField>
+
+### Usage
+
+```typescript
+engine.process({
+  logos: ['/logo1.svg'],
+  backgroundColor: '#1a1a1a', // Dark background
+});
+
+engine.process({
+  logos: ['/logo2.svg'],
+  backgroundColor: [255, 255, 255], // White background as RGB tuple
+});
+```
+
+If omitted, the background color is auto-detected from the logo's corner pixels.

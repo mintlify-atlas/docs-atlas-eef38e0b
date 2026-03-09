@@ -1,0 +1,393 @@
+---
+title: How It Works
+description: Deep dive into Logo Soup's normalization algorithm
+---
+
+Logo Soup uses a four-step algorithm to make logos look good together. All processing happens client-side using the Canvas API—no server, no AI, fully deterministic.
+
+## The Problem
+
+When you display multiple logos together, they rarely look balanced:
+
+- **Different aspect ratios**: Wide logos overpower tall ones
+- **Different weights**: Bold/dense logos dominate light/thin ones
+- **Inconsistent padding**: Some logos have whitespace baked in, others don't
+- **Optical illusions**: Light-on-dark logos appear larger than they are
+
+Simply scaling all logos to the same width or height doesn't solve these issues. You need a smarter approach.
+
+## The Solution: 4-Step Algorithm
+
+### 1. Content Detection
+
+First, Logo Soup analyzes each logo to find the **actual content boundaries**, ignoring any whitespace or padding baked into the image.
+
+```ts
+// Downscale to ~2048 pixels for fast analysis
+const ratio = totalPixels > 2048 ? Math.sqrt(2048 / totalPixels) : 1;
+const scaledWidth = Math.round(width * ratio);
+const scaledHeight = Math.round(height * ratio);
+
+// Render to canvas and extract pixel data
+ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+const imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
+```
+
+The algorithm:
+
+1. **Detects transparency**: Analyzes the perimeter pixels to determine if the logo has a transparent background or an opaque one
+2. **Identifies background color**: For opaque logos, clusters perimeter colors into buckets and finds the dominant background color
+3. **Finds content pixels**: Scans all pixels and marks those with sufficient contrast or alpha as "content"
+4. **Computes bounding box**: Tracks min/max X/Y of content pixels to get the true content boundaries
+
+```ts
+// Contrast threshold (default 10 on 0-255 scale)
+const contrastDistanceSq = contrastThreshold ** 2 * 3;
+
+for (let i = 0; i < pixelCount; i++) {
+  const pixel = data32[i];
+  const alpha = pixel >>> 24;
+  
+  if (alpha <= contrastThreshold) continue; // Too transparent
+  
+  const r = pixel & 0xff;
+  const g = (pixel >>> 8) & 0xff;
+  const b = (pixel >>> 16) & 0xff;
+  
+  const dr = r - bgR;
+  const dg = g - bgG;
+  const db = b - bgB;
+  
+  const distSq = dr * dr + dg * dg + db * db;
+  if (distSq < contrastDistanceSq) continue; // Too similar to background
+  
+  // This pixel is content
+  minX = Math.min(minX, x);
+  maxX = Math.max(maxX, x);
+  minY = Math.min(minY, y);
+  maxY = Math.max(maxY, y);
+}
+```
+
+<Accordion title="Why downscale first?">
+  Analyzing a 2000×2000 logo at full resolution means processing 4 million pixels. Downscaling to ~2048 total pixels (e.g., 45×45) reduces this to ~2000 pixels—a 2000× speedup with negligible loss in boundary accuracy.
+</Accordion>
+
+The result is a **content bounding box** that represents the logo without padding:
+
+```ts
+type BoundingBox = {
+  x: number;      // Top-left X
+  y: number;      // Top-left Y
+  width: number;  // Content width
+  height: number; // Content height
+};
+```
+
+### 2. Aspect Ratio Normalization
+
+Next, Logo Soup normalizes aspect ratios using [Dan Paquette's technique](https://www.sanity.io/blog/the-logo-soup-problem), which balances wide vs tall logos using a power function.
+
+```ts
+const aspectRatio = contentWidth / contentHeight;
+
+// Formula: normalizedWidth = aspectRatio^scaleFactor × baseSize
+let normalizedWidth = aspectRatio ** scaleFactor * baseSize;
+let normalizedHeight = normalizedWidth / aspectRatio;
+```
+
+The `scaleFactor` parameter controls the behavior:
+
+- **`scaleFactor = 0`**: All logos get the same width (height varies)
+  - `normalizedWidth = aspectRatio^0 × baseSize = 1 × baseSize = baseSize`
+- **`scaleFactor = 1`**: All logos get the same height (width varies)
+  - `normalizedWidth = aspectRatio^1 × baseSize = aspectRatio × baseSize`
+  - So `normalizedHeight = (aspectRatio × baseSize) / aspectRatio = baseSize`
+- **`scaleFactor = 0.5`**: Balanced appearance (recommended default)
+
+<Note>
+Read the full explanation in Dan Paquette's blog post: [The Logo Soup Problem (and how to solve it)](https://www.sanity.io/blog/the-logo-soup-problem)
+</Note>
+
+**Example**: Three logos with `baseSize = 48` and `scaleFactor = 0.5`
+
+| Logo | Aspect Ratio | Calculation | Width | Height |
+| --- | --- | --- | --- | --- |
+| Wide | 3:1 (3.0) | `3^0.5 × 48` | 83px | 28px |
+| Square | 1:1 (1.0) | `1^0.5 × 48` | 48px | 48px |
+| Tall | 1:3 (0.33) | `0.33^0.5 × 48` | 28px | 83px |
+
+Without the power curve, the wide logo would be 3× the area of the tall logo. With `scaleFactor = 0.5`, the size difference is much more balanced.
+
+### 3. Density Compensation
+
+Bold, dense logos visually dominate light, thin logos even when they're the same size. Logo Soup measures **pixel density** (visual weight) and adjusts sizing to compensate.
+
+```ts
+// Measure density during content detection
+let filledPixels = 0;
+let totalWeightedOpacity = 0;
+
+for (each content pixel) {
+  filledPixels++;
+  totalWeightedOpacity += opacity;
+}
+
+const scanArea = (maxX - minX + 1) * (maxY - minY + 1);
+const coverageRatio = filledPixels / scanArea;
+const averageOpacity = totalWeightedOpacity / 255 / filledPixels;
+
+pixelDensity = coverageRatio * averageOpacity; // Range: 0 to 1
+```
+
+Then apply inverse scaling:
+
+```ts
+const referenceDensity = 0.35; // Typical logo density
+const densityRatio = pixelDensity / referenceDensity;
+
+// Inverse scaling: denser logos get smaller, lighter logos get larger
+const densityScale = (1 / densityRatio) ** (densityFactor * 0.5);
+
+// Clamp to 0.5x - 2x to avoid extreme adjustments
+const clampedScale = Math.max(0.5, Math.min(2, densityScale));
+
+normalizedWidth *= clampedScale;
+normalizedHeight *= clampedScale;
+```
+
+The `densityFactor` parameter (default `0.5`) controls how strongly density affects the result:
+
+- `densityFactor = 0`: No density compensation
+- `densityFactor = 0.5`: Moderate compensation (recommended)
+- `densityFactor = 1`: Maximum compensation
+
+**Example**: Two logos, both 48×48 after aspect normalization
+
+| Logo | Density | Calculation | Scale | Final Size |
+| --- | --- | --- | --- | --- |
+| Bold | 0.7 | `(1 / 2.0)^0.25` ≈ 0.84 | 0.84× | 40×40 |
+| Thin | 0.2 | `(1 / 0.57)^0.25` ≈ 1.18 | 1.18× | 57×57 |
+
+The thin logo gets scaled up, the bold logo down—creating visual balance.
+
+### 4. Irradiation Compensation
+
+The [Helmholtz irradiation illusion](https://en.wikipedia.org/wiki/Irradiation_illusion) causes light content on dark backgrounds to appear larger and bolder than it is. Logo Soup detects background luminance and applies compensatory scaling.
+
+```ts
+// Only applies to opaque logos (transparent logos don't have background)
+if (backgroundLuminance !== undefined) {
+  const darkness = 1 - backgroundLuminance; // 0 = white, 1 = black
+  const density = pixelDensity ?? 0.5;
+  
+  // Scale down by up to 8% based on darkness × density
+  const irradiationScale = 1 - darkness * density * 0.08;
+  
+  normalizedWidth *= irradiationScale;
+  normalizedHeight *= irradiationScale;
+}
+```
+
+**Why multiply by density?**
+
+The irradiation effect is more pronounced on dense/bold logos because more surface area "blooms." A thin logo on black won't bloom as much as a thick one.
+
+**Example**: White logo on black background (darkness = 1.0)
+
+| Density | Calculation | Scale | Effect |
+| --- | --- | --- | --- |
+| 0.3 (thin) | `1 - 1.0 × 0.3 × 0.08` | 0.976× | ~2% reduction |
+| 0.7 (bold) | `1 - 1.0 × 0.7 × 0.08` | 0.944× | ~6% reduction |
+
+<Note>
+Learn more about irradiation compensation:
+- [Adjust perceived typeface weight for dark mode](https://nerdy.dev/adjust-perceived-typepace-weight-for-dark-mode-without-layout-shift)
+- [Gist by Jano García](https://gist.github.com/janogarcia/e9f57cd18ca85756743f81d9692764b7)
+</Note>
+
+## Visual Centering
+
+After normalization, logos may still look misaligned because their **visual weight center** doesn't match their **geometric center**. Logo Soup computes the visual center during content detection:
+
+```ts
+let totalWeight = 0;
+let weightedX = 0;
+let weightedY = 0;
+
+for (each content pixel) {
+  const weight = distSq * alpha; // Contrast × opacity
+  totalWeight += weight;
+  weightedX += (x + 0.5) * weight;
+  weightedY += (y + 0.5) * weight;
+}
+
+const centerX = weightedX / totalWeight;
+const centerY = weightedY / totalWeight;
+```
+
+This produces a **visual center** that accounts for the logo's shape and density distribution:
+
+```ts
+type VisualCenter = {
+  x: number;       // Global center X in original image
+  y: number;       // Global center Y in original image
+  offsetX: number; // Offset from geometric center (X)
+  offsetY: number; // Offset from geometric center (Y)
+};
+```
+
+Use `getVisualCenterTransform()` to apply the correction as a CSS transform:
+
+```ts
+const transform = getVisualCenterTransform(logo, "visual-center-y");
+// Returns: "translate(-2.3px, 1.5px)" or undefined if offset is negligible
+```
+
+Alignment modes:
+
+- `"bounds"`: No transform (geometric center)
+- `"visual-center-y"`: Vertical alignment only (default for horizontal strips)
+- `"visual-center-x"`: Horizontal alignment only
+- `"visual-center"`: Both axes (best for grids)
+
+## Cropping
+
+If `cropToContent={true}`, Logo Soup crops logos to their content bounding box and generates a new blob URL:
+
+```ts
+const canvas = document.createElement("canvas");
+canvas.width = contentBox.width;
+canvas.height = contentBox.height;
+
+const ctx = canvas.getContext("2d");
+ctx.drawImage(
+  img,
+  contentBox.x, contentBox.y, contentBox.width, contentBox.height,
+  0, 0, contentBox.width, contentBox.height
+);
+
+canvas.toBlob((blob) => {
+  const croppedSrc = URL.createObjectURL(blob);
+  // Use croppedSrc in <img> tag
+});
+```
+
+The cropped URL is stored in `logo.croppedSrc`. The engine automatically revokes these blob URLs on `destroy()` to prevent memory leaks.
+
+## Putting It All Together
+
+Here's the complete flow for a single logo:
+
+```ts
+// 1. Load image
+const img = await loadImage(src);
+
+// 2. Measure with content detection
+const measurement = measureWithContentDetection(
+  img,
+  contrastThreshold,
+  densityAware,
+  backgroundColor
+);
+// → { width, height, contentBox, pixelDensity, visualCenter, backgroundLuminance }
+
+// 3. Calculate normalized dimensions
+const aspectRatio = contentBox.width / contentBox.height;
+let width = aspectRatio ** scaleFactor * baseSize;
+let height = width / aspectRatio;
+
+// Apply irradiation compensation
+if (measurement.backgroundLuminance !== undefined) {
+  const darkness = 1 - measurement.backgroundLuminance;
+  const density = measurement.pixelDensity ?? 0.5;
+  const irradiationScale = 1 - darkness * density * 0.08;
+  width *= irradiationScale;
+  height *= irradiationScale;
+}
+
+// Apply density compensation
+if (densityAware && measurement.pixelDensity !== undefined) {
+  const referenceDensity = 0.35;
+  const densityRatio = measurement.pixelDensity / referenceDensity;
+  const densityScale = (1 / densityRatio) ** (densityFactor * 0.5);
+  const clampedScale = Math.max(0.5, Math.min(2, densityScale));
+  width *= clampedScale;
+  height *= clampedScale;
+}
+
+// 4. Optionally crop to content
+let croppedSrc;
+if (cropToContent && contentBox) {
+  croppedSrc = await cropToBlobUrl(img, contentBox);
+}
+
+// Return normalized logo
+return {
+  src,
+  alt,
+  originalWidth: img.naturalWidth,
+  originalHeight: img.naturalHeight,
+  contentBox,
+  normalizedWidth: Math.round(width),
+  normalizedHeight: Math.round(height),
+  aspectRatio,
+  pixelDensity: measurement.pixelDensity,
+  visualCenter: measurement.visualCenter,
+  croppedSrc,
+};
+```
+
+## Performance
+
+- **Image loading**: All images load in parallel using `Promise.all`
+- **Downscaling**: Content detection uses a max 2048-pixel canvas (~45×45 for a square) for 2000× speedup
+- **Single-pass analysis**: Bounding box, density, and visual center are all computed in one pixel scan
+- **Caching**: Measurements are cached per URL. Calling `process()` again with the same URLs reuses cached results
+- **Memory management**: Blob URLs are automatically revoked on `engine.destroy()`
+
+The entire normalization process typically completes in **10-50ms** for a dozen logos, even on mid-range devices.
+
+## Example: Before and After
+
+Let's say you have three logos with different characteristics:
+
+| Logo | Original Size | Content Box | Aspect Ratio | Density |
+| --- | --- | --- | --- | --- |
+| Acme | 200×200 | 150×80 (cropped) | 1.875 | 0.45 |
+| Globex | 300×100 | 290×90 (cropped) | 3.22 | 0.62 |
+| Initech | 150×300 | 100×280 (cropped) | 0.357 | 0.28 |
+
+With `baseSize=48`, `scaleFactor=0.5`, `densityFactor=0.5`:
+
+**Step 1: Aspect ratio normalization**
+
+| Logo | Formula | Width | Height |
+| --- | --- | --- | --- |
+| Acme | `1.875^0.5 × 48` | 66px | 35px |
+| Globex | `3.22^0.5 × 48` | 86px | 27px |
+| Initech | `0.357^0.5 × 48` | 29px | 81px |
+
+**Step 2: Density compensation**
+
+| Logo | Density Ratio | Scale | Final Width | Final Height |
+| --- | --- | --- | --- | --- |
+| Acme | 0.45 / 0.35 = 1.29 | 0.93× | 61px | 33px |
+| Globex | 0.62 / 0.35 = 1.77 | 0.84× | 72px | 22px |
+| Initech | 0.28 / 0.35 = 0.80 | 1.10× | 32px | 89px |
+
+The dense Globex logo gets scaled down, the light Initech logo scaled up—creating visual harmony.
+
+## Learn More
+
+- [The Logo Soup Problem (and how to solve it)](https://www.sanity.io/blog/the-logo-soup-problem) — Full blog post by Dan Paquette
+- [Helmholtz Irradiation Illusion](https://en.wikipedia.org/wiki/Irradiation_illusion) — Wikipedia
+- [Irradiation compensation technique](https://gist.github.com/janogarcia/e9f57cd18ca85756743f81d9692764b7) — Jano García's gist
+
+## Source Code
+
+All normalization logic is in the `@sanity-labs/logo-soup` core:
+
+- `src/core/normalize.ts:46` — Aspect ratio normalization and density/irradiation formulas
+- `src/core/measure.ts:209` — Content detection, bounding box, density, visual center
+- `src/core/get-visual-center-transform.ts:4` — Visual centering transform calculation

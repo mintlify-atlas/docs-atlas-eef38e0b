@@ -1,0 +1,389 @@
+---
+title: Angular
+description: Use Logo Soup in Angular applications with signals
+---
+
+## Installation
+
+```bash
+npm install @sanity-labs/logo-soup
+```
+
+Logo Soup has optional peer dependencies. For Angular:
+
+```bash
+npm install @angular/core@^19
+```
+
+<Note>
+  Requires Angular 19+ for standalone components and signal-based APIs
+</Note>
+
+## Quick Start
+
+`LogoSoupService` is an injectable service that manages logo processing with Angular signals:
+
+```typescript
+import { Component, input, effect, inject } from "@angular/core";
+import { LogoSoupService } from "@sanity-labs/logo-soup/angular";
+
+@Component({
+  selector: "logo-strip",
+  standalone: true,
+  providers: [LogoSoupService],
+  template: `
+    @for (logo of service.state().normalizedLogos; track logo.src) {
+      <img
+        [src]="logo.src"
+        [alt]="logo.alt"
+        [width]="logo.normalizedWidth"
+        [height]="logo.normalizedHeight"
+      />
+    }
+  `,
+})
+export class LogoStripComponent {
+  protected service = inject(LogoSoupService);
+  logos = input.required<string[]>();
+
+  constructor() {
+    effect(() => {
+      this.service.process({ logos: this.logos() });
+    });
+  }
+}
+```
+
+## Service API
+
+### LogoSoupService
+
+**Injectable:** Must be provided at component level via `providers`
+
+**Properties:**
+
+```ts
+class LogoSoupService {
+  // Readonly signal containing current state
+  readonly state: Signal<LogoSoupState>;
+  
+  // Trigger processing with new options
+  process(options: ProcessOptions): void;
+}
+```
+
+**State Type:**
+
+```ts
+type LogoSoupState = {
+  status: "idle" | "loading" | "ready" | "error";
+  normalizedLogos: NormalizedLogo[];
+  error: Error | null;
+};
+```
+
+## Process Options
+
+All [standard processing options](/options) are supported:
+
+```ts
+type ProcessOptions = {
+  logos: (string | LogoSource)[];
+  baseSize?: number;
+  scaleFactor?: number;
+  contrastThreshold?: number;
+  densityAware?: boolean;
+  densityFactor?: number;
+  cropToContent?: boolean;
+  backgroundColor?: BackgroundColor;
+};
+```
+
+## Automatic Cleanup
+
+The service automatically cleans up when the component is destroyed using `DestroyRef`:
+
+```ts
+@Injectable()
+export class LogoSoupService {
+  private engine = createEngine();
+  private destroyRef = inject(DestroyRef);
+
+  constructor() {
+    const unsubscribe = this.engine.subscribe(() => {
+      this._state.set(this.engine.getSnapshot());
+    });
+
+    this.destroyRef.onDestroy(() => {
+      unsubscribe();
+      this.engine.destroy();
+    });
+  }
+}
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="Basic Strip">
+    ```typescript
+    import { Component, input, effect, inject } from "@angular/core";
+    import { LogoSoupService } from "@sanity-labs/logo-soup/angular";
+    import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+    import { NgStyle } from "@angular/common";
+
+    @Component({
+      selector: "logo-strip",
+      standalone: true,
+      imports: [NgStyle],
+      providers: [LogoSoupService],
+      template: `
+        <div class="logo-container">
+          @for (logo of service.state().normalizedLogos; track logo.src) {
+            <img
+              [src]="logo.src"
+              [alt]="logo.alt"
+              [width]="logo.normalizedWidth"
+              [height]="logo.normalizedHeight"
+              [ngStyle]="{
+                transform: getTransform(logo)
+              }"
+            />
+          }
+        </div>
+      `,
+      styles: `
+        .logo-container {
+          display: flex;
+          gap: 2rem;
+          justify-content: center;
+        }
+      `,
+    })
+    export class LogoStripComponent {
+      protected service = inject(LogoSoupService);
+      logos = input.required<Array<{ src: string; alt: string }>>();
+
+      constructor() {
+        effect(() => {
+          this.service.process({
+            logos: this.logos(),
+            baseSize: 48,
+          });
+        });
+      }
+
+      protected getTransform(logo: any): string {
+        return getVisualCenterTransform(logo, "visual-center-y") || "none";
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Custom Grid">
+    ```typescript
+    import { Component, input, effect, inject } from "@angular/core";
+    import { LogoSoupService } from "@sanity-labs/logo-soup/angular";
+    import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+    import { NgStyle } from "@angular/common";
+
+    @Component({
+      selector: "logo-grid",
+      standalone: true,
+      imports: [NgStyle],
+      providers: [LogoSoupService],
+      template: `
+        <div class="grid">
+          @if (service.state().status === "loading") {
+            <p>Loading logos...</p>
+          }
+          
+          @if (service.state().status === "ready") {
+            @for (logo of service.state().normalizedLogos; track logo.src) {
+              <div class="grid-item">
+                <img
+                  [src]="logo.croppedSrc || logo.src"
+                  [alt]="logo.alt"
+                  [width]="logo.normalizedWidth"
+                  [height]="logo.normalizedHeight"
+                  [ngStyle]="{
+                    transform: getTransform(logo)
+                  }"
+                />
+              </div>
+            }
+          }
+          
+          @if (service.state().error) {
+            <p>Error: {{ service.state().error!.message }}</p>
+          }
+        </div>
+      `,
+      styles: `
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 2rem;
+        }
+        
+        .grid-item {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+      `,
+    })
+    export class LogoGridComponent {
+      protected service = inject(LogoSoupService);
+      logos = input.required<string[]>();
+
+      constructor() {
+        effect(() => {
+          this.service.process({
+            logos: this.logos(),
+            baseSize: 64,
+            cropToContent: true,
+          });
+        });
+      }
+
+      protected getTransform(logo: any): string {
+        return getVisualCenterTransform(logo, "visual-center") || "none";
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Interactive Controls">
+    ```typescript
+    import { Component, signal, effect, inject, computed } from "@angular/core";
+    import { LogoSoupService } from "@sanity-labs/logo-soup/angular";
+    import { FormsModule } from "@angular/forms";
+
+    @Component({
+      selector: "interactive-logos",
+      standalone: true,
+      imports: [FormsModule],
+      providers: [LogoSoupService],
+      template: `
+        <div class="controls">
+          <label>
+            Base Size: {{ baseSize() }}px
+            <input
+              type="range"
+              [min]="24"
+              [max]="128"
+              [ngModel]="baseSize()"
+              (ngModelChange)="baseSize.set($event)"
+            />
+          </label>
+          
+          <label>
+            <input
+              type="checkbox"
+              [ngModel]="cropEnabled()"
+              (ngModelChange)="cropEnabled.set($event)"
+            />
+            Crop whitespace
+          </label>
+          
+          <button (click)="addLogo()">Add Logo</button>
+        </div>
+
+        <div class="logos">
+          @if (service.state().status === "ready") {
+            @for (logo of service.state().normalizedLogos; track logo.src) {
+              <img
+                [src]="logo.croppedSrc || logo.src"
+                [alt]="logo.alt"
+                [width]="logo.normalizedWidth"
+                [height]="logo.normalizedHeight"
+              />
+            }
+          }
+        </div>
+      `,
+      styles: `
+        .controls {
+          margin-bottom: 1rem;
+          display: flex;
+          gap: 1rem;
+        }
+        
+        .logos {
+          display: flex;
+          gap: 2rem;
+        }
+      `,
+    })
+    export class InteractiveLogosComponent {
+      protected service = inject(LogoSoupService);
+      
+      logos = signal(["/logo1.svg", "/logo2.svg"]);
+      baseSize = signal(48);
+      cropEnabled = signal(false);
+
+      constructor() {
+        effect(() => {
+          this.service.process({
+            logos: this.logos(),
+            baseSize: this.baseSize(),
+            cropToContent: this.cropEnabled(),
+          });
+        });
+      }
+
+      protected addLogo() {
+        this.logos.update((current) => [
+          ...current,
+          `/logo${current.length + 1}.svg`,
+        ]);
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## TypeScript
+
+All Angular exports are fully typed:
+
+```ts
+import { LogoSoupService } from "@sanity-labs/logo-soup/angular";
+
+import type {
+  ProcessOptions,
+  LogoSoupState,
+  LogoSource,
+  NormalizedLogo,
+  AlignmentMode,
+  BackgroundColor,
+} from "@sanity-labs/logo-soup";
+```
+
+## Service Scope
+
+<Warning>
+  Always provide `LogoSoupService` at the **component level**, not at the module or root level. Each component instance needs its own service instance.
+</Warning>
+
+```typescript
+@Component({
+  selector: "my-component",
+  providers: [LogoSoupService], // ✅ Component-scoped
+  // ...
+})
+```
+
+```typescript
+// ❌ Don't do this
+@NgModule({
+  providers: [LogoSoupService], // Shared across all components
+})
+```
+
+## See Also
+
+- [API Reference](/options) - Complete options reference
+- [Alignment](/how-it-works) - How visual centering works
+- [Custom Adapters](/frameworks/custom) - Build your own framework adapter

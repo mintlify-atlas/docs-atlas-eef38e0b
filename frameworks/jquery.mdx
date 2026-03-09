@@ -1,0 +1,296 @@
+---
+title: jQuery
+description: Use Logo Soup as a jQuery plugin
+---
+
+## Installation
+
+```bash
+npm install @sanity-labs/logo-soup jquery@^4
+```
+
+<Note>
+  Supports jQuery 4.x. Auto-installs onto `window.jQuery` if available.
+</Note>
+
+## Quick Start
+
+Install the plugin, then call `.logoSoup()` on any jQuery selection:
+
+```ts
+import $ from "jquery";
+import { install } from "@sanity-labs/logo-soup/jquery";
+
+install($);
+
+$("#logos").logoSoup({
+  logos: [
+    { src: "/logos/acme.svg", alt: "Acme Corp" },
+    { src: "/logos/globex.svg", alt: "Globex" },
+    { src: "/logos/initech.svg", alt: "Initech" },
+  ],
+  baseSize: 48,
+  alignBy: "visual-center-y",
+});
+```
+
+The plugin automatically renders normalized logos into the target element.
+
+## Plugin API
+
+### Installation
+
+```ts
+import $ from "jquery";
+import { install } from "@sanity-labs/logo-soup/jquery";
+
+install($);
+```
+
+If `window.jQuery` exists, the plugin auto-installs.
+
+### Initialization
+
+```ts
+$(selector).logoSoup(options);
+```
+
+Initializes Logo Soup on the selected element(s). Returns the jQuery object for chaining.
+
+**Options:** All [standard processing options](/options) plus:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `logos` | `(string \| LogoSource)[]` | required | Array of logo URLs or objects |
+| `baseSize` | `number` | `48` | Target size in pixels |
+| `scaleFactor` | `number` | `0.5` | Shape handling balance |
+| `densityAware` | `boolean` | `true` | Scale dense logos |
+| `densityFactor` | `number` | `0.5` | Density effect strength |
+| `cropToContent` | `boolean` | `false` | Crop whitespace |
+| `contrastThreshold` | `number` | `10` | Content detection threshold |
+| `backgroundColor` | `string \| [r,g,b]` | auto | Background color hint |
+| `alignBy` | `AlignmentMode` | `"visual-center-y"` | Alignment mode |
+| `gap` | `number \| string` | `28` | Space between logos |
+| `onReady` | `(logos) => void` | - | Callback when ready |
+| `onError` | `(error) => void` | - | Error callback |
+
+### Methods
+
+#### Update Logos
+
+```ts
+$("#logos").logoSoup("process", { logos: newLogos });
+```
+
+Updates the logos and triggers re-processing.
+
+#### Wait for Ready
+
+```ts
+const logos = await $("#logos").logoSoup("ready");
+console.log("Loaded", logos.length, "logos");
+```
+
+Returns a native Promise that resolves with normalized logos when ready.
+
+<Note>
+  Uses native `Promise` (not jQuery Deferred) to support jQuery 4 slim builds.
+</Note>
+
+#### Destroy
+
+```ts
+$("#logos").logoSoup("destroy");
+```
+
+Cleans up the engine, unsubscribes listeners, and clears the container.
+
+#### Get Instance
+
+```ts
+const instance = $("#logos").logoSoup("instance");
+if (instance) {
+  const state = instance.engine.getSnapshot();
+}
+```
+
+Returns the internal instance object (engine, options, unsubscribe).
+
+## Examples
+
+<Tabs>
+  <Tab title="Basic Usage">
+    ```ts
+    import $ from "jquery";
+    import { install } from "@sanity-labs/logo-soup/jquery";
+
+    install($);
+
+    $("#logos").logoSoup({
+      logos: [
+        { src: "/logos/acme.svg", alt: "Acme Corp" },
+        { src: "/logos/globex.svg", alt: "Globex" },
+        { src: "/logos/initech.svg", alt: "Initech" },
+      ],
+      baseSize: 48,
+      gap: 32,
+      alignBy: "visual-center-y",
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Dynamic Updates">
+    ```ts
+    import $ from "jquery";
+    import { install } from "@sanity-labs/logo-soup/jquery";
+
+    install($);
+
+    // Initialize
+    $("#logos").logoSoup({
+      logos: ["/logo1.svg", "/logo2.svg"],
+    });
+
+    // Later, update logos
+    $("#add-logo").on("click", () => {
+      const currentLogos = [/* ... get current logos ... */];
+      const newLogos = [...currentLogos, "/new-logo.svg"];
+      
+      $("#logos").logoSoup("process", { logos: newLogos });
+    });
+
+    // Clean up
+    $("#clear").on("click", () => {
+      $("#logos").logoSoup("destroy");
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Async Ready">
+    ```ts
+    import $ from "jquery";
+    import { install } from "@sanity-labs/logo-soup/jquery";
+
+    install($);
+
+    async function loadLogos() {
+      $("#logos").logoSoup({
+        logos: ["/logo1.svg", "/logo2.svg", "/logo3.svg"],
+        baseSize: 64,
+      });
+
+      try {
+        const logos = await $("#logos").logoSoup("ready");
+        console.log(`Successfully loaded ${logos.length} logos`);
+        
+        logos.forEach((logo) => {
+          console.log(`${logo.alt}: ${logo.normalizedWidth}x${logo.normalizedHeight}`);
+        });
+      } catch (error) {
+        console.error("Failed to load logos:", error);
+      }
+    }
+
+    loadLogos();
+    ```
+  </Tab>
+  
+  <Tab title="With Callbacks">
+    ```ts
+    import $ from "jquery";
+    import { install } from "@sanity-labs/logo-soup/jquery";
+
+    install($);
+
+    $("#logos").logoSoup({
+      logos: [
+        { src: "/logos/acme.svg", alt: "Acme Corp" },
+        { src: "/logos/globex.svg", alt: "Globex" },
+      ],
+      baseSize: 48,
+      onReady: (logos) => {
+        console.log("Logos normalized:", logos);
+        $("#loading").hide();
+        $("#logos").fadeIn();
+      },
+      onError: (error) => {
+        console.error("Failed to normalize:", error);
+        $("#error").text(error.message).show();
+      },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Data Attributes
+
+The plugin sets `data-logo-soup-loading` on the container element:
+
+```html
+<div id="logos" data-logo-soup-loading="true"><!-- logos --></div>
+```
+
+You can use this for CSS-based loading states:
+
+```css
+#logos[data-logo-soup-loading="true"] {
+  opacity: 0;
+}
+
+#logos[data-logo-soup-loading="false"] {
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+```
+
+## Instance Storage
+
+The plugin stores instance data using `$.data()`:
+
+```ts
+const instance = $.data(element, "logoSoup");
+// { engine, unsubscribe, options }
+```
+
+## Chaining
+
+All methods return the jQuery object for chaining:
+
+```ts
+$("#logos")
+  .logoSoup({ logos: ["/logo1.svg"] })
+  .addClass("active")
+  .fadeIn();
+```
+
+## TypeScript
+
+The plugin extends jQuery's type definitions:
+
+```ts
+import type {
+  LogoSoupPluginOptions,
+} from "@sanity-labs/logo-soup/jquery";
+
+import type {
+  LogoSource,
+  NormalizedLogo,
+  AlignmentMode,
+} from "@sanity-labs/logo-soup";
+
+declare global {
+  interface JQuery {
+    logoSoup(options: LogoSoupPluginOptions): JQuery;
+    logoSoup(method: "process", options: ProcessOptions): JQuery;
+    logoSoup(method: "destroy"): JQuery;
+    logoSoup(method: "ready"): Promise<NormalizedLogo[]>;
+    logoSoup(method: "instance"): LogoSoupInstance | undefined;
+  }
+}
+```
+
+## See Also
+
+- [API Reference](/options) - Complete options reference
+- [Alignment](/how-it-works) - How visual centering works
+- [Vanilla JS](/frameworks/vanilla) - Using the core engine directly

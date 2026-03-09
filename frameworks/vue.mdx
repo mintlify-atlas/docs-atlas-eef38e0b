@@ -1,0 +1,282 @@
+---
+title: Vue
+description: Use Logo Soup in Vue 3 applications with the Composition API
+---
+
+## Installation
+
+```bash
+npm install @sanity-labs/logo-soup
+```
+
+Logo Soup has optional peer dependencies. For Vue:
+
+```bash
+npm install vue@^3.5
+```
+
+<Note>
+  Requires Vue 3.5+ for `MaybeRefOrGetter` support
+</Note>
+
+## Quick Start
+
+The `useLogoSoup` composable handles normalization and reactivity:
+
+```vue
+<script setup>
+import { ref } from "vue";
+import { useLogoSoup } from "@sanity-labs/logo-soup/vue";
+import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+const logos = ref([
+  { src: "/logos/acme.svg", alt: "Acme Corp" },
+  { src: "/logos/globex.svg", alt: "Globex" },
+]);
+
+const { isLoading, isReady, normalizedLogos } = useLogoSoup({ logos });
+</script>
+
+<template>
+  <div v-if="isReady">
+    <img
+      v-for="logo in normalizedLogos"
+      :key="logo.src"
+      :src="logo.src"
+      :alt="logo.alt"
+      :width="logo.normalizedWidth"
+      :height="logo.normalizedHeight"
+      :style="{
+        transform: getVisualCenterTransform(logo, 'visual-center-y'),
+      }"
+    />
+  </div>
+</template>
+```
+
+## Composable API
+
+### useLogoSoup
+
+**Options:**
+
+All options accept `ref`, plain values, or getter functions (`MaybeRefOrGetter`). The composable automatically tracks dependencies and re-processes when any option changes.
+
+```ts
+type UseLogoSoupOptions = {
+  logos: MaybeRefOrGetter<(string | LogoSource)[]>;
+  baseSize?: MaybeRefOrGetter<number | undefined>;
+  scaleFactor?: MaybeRefOrGetter<number | undefined>;
+  contrastThreshold?: MaybeRefOrGetter<number | undefined>;
+  densityAware?: MaybeRefOrGetter<boolean | undefined>;
+  densityFactor?: MaybeRefOrGetter<number | undefined>;
+  cropToContent?: MaybeRefOrGetter<boolean | undefined>;
+  backgroundColor?: MaybeRefOrGetter<BackgroundColor | undefined>;
+};
+```
+
+**Return Value:**
+
+```ts
+type UseLogoSoupReturn = {
+  state: ShallowRef<LogoSoupState>;
+  isLoading: ComputedRef<boolean>;
+  isReady: ComputedRef<boolean>;
+  normalizedLogos: ComputedRef<NormalizedLogo[]>;
+  error: ComputedRef<Error | null>;
+};
+```
+
+## Reactive Options
+
+The composable uses `toValue()` internally, so you can pass refs, reactive objects, or getter functions:
+
+```vue
+<script setup>
+import { ref, computed } from "vue";
+import { useLogoSoup } from "@sanity-labs/logo-soup/vue";
+
+const logos = ref(["/logo1.svg", "/logo2.svg"]);
+const size = ref(48);
+
+// All these work:
+const { normalizedLogos } = useLogoSoup({
+  logos, // ref
+  baseSize: size, // ref
+  scaleFactor: 0.5, // plain value
+  densityAware: () => size.value > 64, // getter function
+});
+
+// When logos or size changes, processing automatically re-runs
+</script>
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="Basic Strip">
+    ```vue
+    <script setup>
+    import { ref } from "vue";
+    import { useLogoSoup } from "@sanity-labs/logo-soup/vue";
+    import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+    const logos = ref([
+      { src: "/logos/acme.svg", alt: "Acme Corp" },
+      { src: "/logos/globex.svg", alt: "Globex" },
+      { src: "/logos/initech.svg", alt: "Initech" },
+    ]);
+
+    const { isReady, normalizedLogos } = useLogoSoup({ logos });
+    </script>
+
+    <template>
+      <div v-if="isReady" class="flex gap-8 justify-center">
+        <img
+          v-for="logo in normalizedLogos"
+          :key="logo.src"
+          :src="logo.src"
+          :alt="logo.alt"
+          :width="logo.normalizedWidth"
+          :height="logo.normalizedHeight"
+          :style="{
+            transform: getVisualCenterTransform(logo, 'visual-center-y'),
+          }"
+        />
+      </div>
+    </template>
+    ```
+  </Tab>
+  
+  <Tab title="Custom Grid">
+    ```vue
+    <script setup>
+    import { ref } from "vue";
+    import { useLogoSoup } from "@sanity-labs/logo-soup/vue";
+    import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+    const logos = ref([
+      "/logo1.svg",
+      "/logo2.svg",
+      "/logo3.svg",
+      "/logo4.svg",
+    ]);
+
+    const { isLoading, isReady, normalizedLogos } = useLogoSoup({
+      logos,
+      baseSize: 64,
+    });
+    </script>
+
+    <template>
+      <div>
+        <div v-if="isLoading">Loading logos...</div>
+        <div v-else-if="isReady" class="grid grid-cols-2 gap-8">
+          <div
+            v-for="logo in normalizedLogos"
+            :key="logo.src"
+            class="flex items-center justify-center"
+          >
+            <img
+              :src="logo.src"
+              :alt="logo.alt"
+              :width="logo.normalizedWidth"
+              :height="logo.normalizedHeight"
+              :style="{
+                transform: getVisualCenterTransform(logo, 'visual-center'),
+              }"
+            />
+          </div>
+        </div>
+      </div>
+    </template>
+    ```
+  </Tab>
+  
+  <Tab title="Dynamic Options">
+    ```vue
+    <script setup>
+    import { ref } from "vue";
+    import { useLogoSoup } from "@sanity-labs/logo-soup/vue";
+    import { getVisualCenterTransform } from "@sanity-labs/logo-soup";
+
+    const logos = ref(["/logo1.svg", "/logo2.svg"]);
+    const baseSize = ref(48);
+    const cropEnabled = ref(false);
+
+    const { isReady, normalizedLogos } = useLogoSoup({
+      logos,
+      baseSize,
+      cropToContent: cropEnabled,
+    });
+
+    function addLogo(src: string) {
+      logos.value.push(src);
+    }
+    </script>
+
+    <template>
+      <div>
+        <div class="controls">
+          <label>
+            Base Size:
+            <input v-model.number="baseSize" type="range" min="24" max="128" />
+            {{ baseSize }}px
+          </label>
+          <label>
+            <input v-model="cropEnabled" type="checkbox" />
+            Crop whitespace
+          </label>
+        </div>
+
+        <div v-if="isReady" class="logos">
+          <img
+            v-for="logo in normalizedLogos"
+            :key="logo.src"
+            :src="logo.croppedSrc || logo.src"
+            :alt="logo.alt"
+            :width="logo.normalizedWidth"
+            :height="logo.normalizedHeight"
+          />
+        </div>
+      </div>
+    </template>
+    ```
+  </Tab>
+</Tabs>
+
+## TypeScript
+
+All Vue exports are fully typed:
+
+```ts
+import type {
+  UseLogoSoupOptions,
+  UseLogoSoupReturn,
+} from "@sanity-labs/logo-soup/vue";
+
+import type {
+  LogoSource,
+  NormalizedLogo,
+  AlignmentMode,
+  BackgroundColor,
+} from "@sanity-labs/logo-soup";
+```
+
+## How It Works
+
+The Vue adapter uses:
+
+- `shallowRef` to store the engine state
+- `watchEffect` to auto-track reactive option changes
+- `toValue()` to unwrap refs, reactive objects, and getters
+- `computed` for derived boolean flags
+- `onScopeDispose` for automatic cleanup
+
+When any reactive option changes, `watchEffect` automatically re-runs and calls `engine.process()` with the new values.
+
+## See Also
+
+- [API Reference](/options) - Complete options reference
+- [Alignment](/how-it-works) - How visual centering works
+- [Custom Adapters](/frameworks/custom) - Build your own framework adapter
