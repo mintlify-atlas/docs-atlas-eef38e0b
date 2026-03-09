@@ -1,0 +1,78 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Logo Soup",
+  "projectDescription": "A tiny framework-agnostic library that normalizes and harmonizes logo visuals",
+  "theme": "palm",
+  "primaryColor": "#f36458",
+  "lightColor": "#ff8a7a",
+  "darkColor": "#d44a3e",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Framework Guides",
+            "pages": [
+              "frameworks/react",
+              "frameworks/vue",
+              "frameworks/svelte",
+              "frameworks/solid",
+              "frameworks/angular",
+              "frameworks/jquery",
+              "frameworks/vanilla",
+              "frameworks/custom"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": ["options", "how-it-works"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api-reference/create-logo-soup",
+              "api-reference/get-visual-center-transform",
+              "api-reference/types"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Framework-agnostic logo normalization (React, Vue, Svelte, Solid, Angular, jQuery, vanilla JS)",
+    "Content detection and whitespace cropping",
+    "Aspect ratio normalization using scaleFactor",
+    "Density compensation for visual weight balancing",
+    "Visual center alignment modes",
+    "Client-side canvas processing"
+  ],
+  "publicApiSurface": [
+    "createLogoSoup()",
+    "getVisualCenterTransform(logo, mode)",
+    "cropToDataUrl()",
+    "calculateNormalizedDimensions()",
+    "createNormalizedLogo()",
+    "useLogoSoup() (React)",
+    "<LogoSoup> (React)",
+    "useLogoSoup() (Vue)",
+    "createLogoSoup() (Svelte)",
+    "useLogoSoup() (Solid)",
+    "LogoSoupService (Angular)",
+    "$.fn.logoSoup() (jQuery)",
+    "ProcessOptions type",
+    "NormalizedLogo type",
+    "AlignmentMode type",
+    "LogoSoupEngine type"
+  ]
+}
