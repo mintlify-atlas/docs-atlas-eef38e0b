@@ -1,0 +1,277 @@
+---
+title: Utilities & Constants
+description: Helper functions and default constants exported from @sanity-labs/logo-soup
+---
+
+## Utility Functions
+
+Logo Soup exports several utility functions that can be useful for advanced use cases or custom integrations.
+
+### cropToDataUrl
+
+Crops an image to its content bounding box and returns a data URL.
+
+```typescript
+function cropToDataUrl(
+  img: HTMLImageElement,
+  contentBox: BoundingBox
+): string
+```
+
+<ParamField path="img" type="HTMLImageElement" required>
+  The image element to crop
+</ParamField>
+
+<ParamField path="contentBox" type="BoundingBox" required>
+  The bounding box defining the content area to extract
+</ParamField>
+
+**Returns:** A data URL (`data:image/png;base64,...`) containing the cropped image.
+
+#### Usage
+
+```typescript
+import { cropToDataUrl } from "@sanity-labs/logo-soup";
+
+const img = new Image();
+img.onload = () => {
+  const contentBox = { x: 10, y: 10, width: 100, height: 100 };
+  const croppedDataUrl = cropToDataUrl(img, contentBox);
+  
+  // Use the cropped data URL
+  const croppedImg = new Image();
+  croppedImg.src = croppedDataUrl;
+};
+img.src = "/logo.svg";
+```
+
+<Note>
+This function uses a canvas to crop the image and returns a data URL. For production use, consider using blob URLs for better memory management.
+</Note>
+
+---
+
+### calculateNormalizedDimensions
+
+Calculates normalized dimensions for a logo based on its measurements and normalization parameters.
+
+```typescript
+function calculateNormalizedDimensions(
+  measurement: MeasurementResult,
+  baseSize: number,
+  scaleFactor: number,
+  densityFactor?: number
+): { width: number; height: number }
+```
+
+<ParamField path="measurement" type="MeasurementResult" required>
+  The measurement result from analyzing the logo
+</ParamField>
+
+<ParamField path="baseSize" type="number" required>
+  Target size in pixels (typically the height or width reference)
+</ParamField>
+
+<ParamField path="scaleFactor" type="number" required>
+  Controls aspect ratio normalization (0 = uniform widths, 1 = uniform heights, 0.5 = balanced)
+</ParamField>
+
+<ParamField path="densityFactor" type="number" default="0">
+  Controls density compensation strength (0 = no effect, 1 = full effect)
+</ParamField>
+
+**Returns:** An object with `width` and `height` properties representing the normalized dimensions.
+
+#### Algorithm
+
+This function implements Dan Paquette's aspect ratio normalization technique:
+
+```
+normalizedWidth = (contentWidth / contentHeight) ^ scaleFactor * baseSize
+normalizedHeight = normalizedWidth / aspectRatio
+```
+
+It also applies:
+- **Density compensation** — Scales based on visual weight (pixel density)
+- **Irradiation compensation** — Adjusts for the Helmholtz illusion on dark backgrounds
+
+#### Usage
+
+```typescript
+import { calculateNormalizedDimensions } from "@sanity-labs/logo-soup";
+
+const measurement = {
+  width: 200,
+  height: 100,
+  contentBox: { x: 10, y: 10, width: 180, height: 80 },
+  pixelDensity: 0.6,
+  backgroundLuminance: 0.95,
+};
+
+const dimensions = calculateNormalizedDimensions(
+  measurement,
+  48,  // baseSize
+  0.5, // scaleFactor
+  0.5  // densityFactor
+);
+
+console.log(dimensions); // { width: 62.4, height: 34.7 }
+```
+
+---
+
+### createNormalizedLogo
+
+Creates a complete `NormalizedLogo` object from a logo source and its measurements.
+
+```typescript
+function createNormalizedLogo(
+  source: LogoSource,
+  measurement: MeasurementResult,
+  baseSize: number,
+  scaleFactor: number,
+  densityFactor?: number
+): NormalizedLogo
+```
+
+<ParamField path="source" type="LogoSource" required>
+  The logo source object with `src` and optional `alt`
+</ParamField>
+
+<ParamField path="measurement" type="MeasurementResult" required>
+  The measurement result from analyzing the logo
+</ParamField>
+
+<ParamField path="baseSize" type="number" required>
+  Target size in pixels
+</ParamField>
+
+<ParamField path="scaleFactor" type="number" required>
+  Aspect ratio normalization factor (0-1)
+</ParamField>
+
+<ParamField path="densityFactor" type="number" default="0">
+  Density compensation factor (0-1)
+</ParamField>
+
+**Returns:** A complete `NormalizedLogo` object with all computed properties.
+
+#### Usage
+
+```typescript
+import { createNormalizedLogo } from "@sanity-labs/logo-soup";
+
+const logo = createNormalizedLogo(
+  { src: "/logo.svg", alt: "Company Logo" },
+  measurement,
+  48,
+  0.5,
+  0.5
+);
+
+console.log(logo);
+// {
+//   src: "/logo.svg",
+//   alt: "Company Logo",
+//   originalWidth: 200,
+//   originalHeight: 100,
+//   contentBox: { ... },
+//   normalizedWidth: 62.4,
+//   normalizedHeight: 34.7,
+//   aspectRatio: 2.25,
+//   pixelDensity: 0.6,
+//   visualCenter: { x: 100, y: 50, offsetX: 0, offsetY: 5 }
+// }
+```
+
+<Tip>
+This function is used internally by the Logo Soup engine. You typically don't need to call it directly unless you're building a custom adapter or processing logos manually.
+</Tip>
+
+---
+
+## Default Constants
+
+Logo Soup exports constants for all default configuration values. These can be useful for building custom UI controls or understanding the default behavior.
+
+### Exported Constants
+
+```typescript
+import {
+  DEFAULT_ALIGN_BY,
+  DEFAULT_BASE_SIZE,
+  DEFAULT_CONTRAST_THRESHOLD,
+  DEFAULT_CROP_TO_CONTENT,
+  DEFAULT_DENSITY_AWARE,
+  DEFAULT_DENSITY_FACTOR,
+  DEFAULT_GAP,
+  DEFAULT_SCALE_FACTOR,
+} from "@sanity-labs/logo-soup";
+```
+
+<ParamField path="DEFAULT_ALIGN_BY" type="AlignmentMode">
+  Default alignment mode: `"visual-center-y"`
+</ParamField>
+
+<ParamField path="DEFAULT_BASE_SIZE" type="number">
+  Default target size: `48` pixels
+</ParamField>
+
+<ParamField path="DEFAULT_CONTRAST_THRESHOLD" type="number">
+  Default contrast threshold: `10` (0-255 scale)
+</ParamField>
+
+<ParamField path="DEFAULT_CROP_TO_CONTENT" type="boolean">
+  Default crop behavior: `false`
+</ParamField>
+
+<ParamField path="DEFAULT_DENSITY_AWARE" type="boolean">
+  Default density compensation: `true`
+</ParamField>
+
+<ParamField path="DEFAULT_DENSITY_FACTOR" type="number">
+  Default density factor: `0.5` (50% strength)
+</ParamField>
+
+<ParamField path="DEFAULT_GAP" type="number">
+  Default gap between logos: `28` pixels (React component only)
+</ParamField>
+
+<ParamField path="DEFAULT_SCALE_FACTOR" type="number">
+  Default scale factor: `0.5` (balanced aspect ratio normalization)
+</ParamField>
+
+### Usage
+
+```typescript
+import { DEFAULT_BASE_SIZE, DEFAULT_SCALE_FACTOR } from "@sanity-labs/logo-soup";
+
+function MyCustomControl() {
+  const [baseSize, setBaseSize] = useState(DEFAULT_BASE_SIZE);
+  const [scaleFactor, setScaleFactor] = useState(DEFAULT_SCALE_FACTOR);
+  
+  return (
+    <div>
+      <label>
+        Base Size (default: {DEFAULT_BASE_SIZE}px)
+        <input
+          type="range"
+          min="24"
+          max="96"
+          value={baseSize}
+          onChange={(e) => setBaseSize(Number(e.target.value))}
+        />
+      </label>
+    </div>
+  );
+}
+```
+
+---
+
+## Related Documentation
+
+- [createLogoSoup](/api-reference/create-logo-soup) — Core engine API
+- [getVisualCenterTransform](/api-reference/get-visual-center-transform) — Alignment helper
+- [Types](/api-reference/types) — Complete type definitions
+- [Options](/options) — Configuration reference

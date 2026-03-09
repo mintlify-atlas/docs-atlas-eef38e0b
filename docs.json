@@ -54,6 +54,7 @@
             "pages": [
               "api-reference/create-logo-soup",
               "api-reference/get-visual-center-transform",
+              "api-reference/utilities",
               "api-reference/types"
             ]
           }
